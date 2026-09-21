@@ -11,7 +11,7 @@ const DIFF={
 
 const baseTeam=[
  ['老板','老板','创意',3.0,88],['策略A','策略','品牌',2.5,82],['客户A','阿康','客户',1.2,67],['客户B','阿康','客户',1.5,72],['客户总监','资深阿康','客户',3.0,84],['文案A','文案','创意',1.1,70],['文案总监','文案总监','创意',3.0,86],['美术A','美术','创意',1.2,73],['美术总监','美术总监','创意',3.0,87],['制片A','制片','制作',2.0,80]
-].map((x,i)=>({id:`p${i}`,name:x[0],role:x[1],spec:x[2],salary:x[3],skill:x[4],slots:[]}));
+].map((x,i)=>({id:`p${i}`,name:x[0],role:x[1],spec:x[2],salary:x[3],skill:x[4],slots:[],tenure:2}));
 
 const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
 const roles=['阿康','文案','美术','策略','制片'];
@@ -61,9 +61,12 @@ function payroll(){return S.team.reduce((a,p)=>a+p.salary,0)}
 function totalCapacity(){return S.team.reduce((a,p)=>a+capacity(p),0)}
 function usedCapacity(){return S.team.reduce((a,p)=>a+activeLoads(p).length,0)}
 function businessScaleStep(n=S.team.length){return Math.max(0,Math.floor((n-10)/5))}
-function businessScaleMultiplier(n=S.team.length){return +(1+businessScaleStep(n)*0.15).toFixed(2)}
 function businessScaleBand(n=S.team.length){return Math.max(10,Math.floor(n/5)*5)}
 function nextScaleAt(n=S.team.length){return (Math.floor(n/5)+1)*5}
+function scaleValueTier(values,step){
+ const baseIndex=Math.floor(Math.random()*values.length);
+ return values[Math.min(values.length-1,baseIndex+step)];
+}
 function unlockCap(){
  const n=S.team.length;
  if(n>=40)return 5000;
@@ -77,14 +80,14 @@ function unlockCap(){
 function showScaleUpgrade(before,after){
  const oldBand=businessScaleBand(before),newBand=businessScaleBand(after);
  if(newBand<=oldBand)return;
- const mult=businessScaleMultiplier(after);
- log(`公司跨进 ${newBand} 人档：之后新刷新的业务案值整体抬高到约 ×${mult.toFixed(2)}。但工资、办公和执行压力也一起涨，案值变大不等于利润变高。`,'good');
+ const gained=businessScaleStep(after)-businessScaleStep(before);
+ log(`公司跨进 ${newBand} 人档：之后新刷新的业务整体上升 ${gained} 个案值档位。毛利率区间基本不变，更大的单不等于更高利润。`,'good');
  const old=document.querySelector('.scale-toast');if(old)old.remove();
  const host=document.createElement('div');host.className='scale-toast';
- host.innerHTML=`<b>业务规模升级：${newBand} 人档</b><span>新业务案值约 ×${mult.toFixed(2)} · 案值变大 ≠ 利润变高</span>`;
+ host.innerHTML=`<b>公司规模扩大，可以接更大的单了</b><span>${newBand} 人档 · 新业务案值 +${gained} 档 · 毛利率不自动变高</span>`;
  document.body.appendChild(host);
- setTimeout(()=>host.classList.add('result-leave'),1800);
- setTimeout(()=>host.remove(),2300);
+ setTimeout(()=>host.classList.add('result-leave'),2200);
+ setTimeout(()=>host.remove(),2700);
 }
 function showManpowerDelta(before,after,reason=''){
  if(before===after)return;
@@ -101,11 +104,12 @@ function makeOpportunity(forced=''){
  const d=DIFF[S.diff], cap=unlockCap();
  const r=Math.random();
  let type=forced|| (r<.24?'small':r<.43?'retainer':'pitch');
+ const scaleStep=businessScaleStep();
  let value;
- if(type==='small') value=pick([8,15,25,40,60]);
- else if(type==='retainer') value=pick([80,120,180,300,500,800,1200,1500]);
- else value=pick([50,80,120,200,300,500,800,1200,1800,3000,5000]);
- value=Math.round(value*d.deal*businessScaleMultiplier());
+ if(type==='small') value=scaleValueTier([8,15,25,40,60,80,120],scaleStep);
+ else if(type==='retainer') value=scaleValueTier([80,120,180,300,500,800,1200,1500,2200,3000],scaleStep);
+ else value=scaleValueTier([50,80,120,200,300,500,800,1200,1800,3000,5000],scaleStep);
+ value=Math.round(value*d.deal);
  value=Math.min(value,cap);
  const people=clamp(Math.ceil(Math.log2(Math.max(16,value/12))),2,12);
  let duration;
@@ -144,7 +148,7 @@ function createHireCandidate(){
  const role=pick(roles);
  const skill=Math.round(62+Math.random()*27);
  const salary=+(0.9+(skill-60)*.055+(role==='策略'?0.4:0)).toFixed(1);
- return {id:uid(),name:pick(names),role,spec:role==='文案'||role==='美术'?'创意':role==='阿康'?'客户':role,salary,skill,slots:[]};
+ return {id:uid(),name:pick(names),role,spec:role==='文案'||role==='美术'?'创意':role==='阿康'?'客户':role,salary,skill,slots:[],tenure:0};
 }
 function hireForProject(o,candidates){
  const before=S.team.length;
@@ -485,13 +489,93 @@ function closeYear(bonus,party){
  const bonusCost=payroll()*bonus; const partyCost=party===0?0:party===1?S.team.length*.3:S.team.length*.8;
  S.cash-=bonusCost+partyCost; S.profit-=bonusCost+partyCost; S.morale=clamp(S.morale + (bonus===0?-5:bonus===1?0:bonus===2?4:6)+(party===0?0:party===1?2:4),0,100);
  const tax=Math.max(0,S.taxable)*DIFF[S.diff].tax;S.cash-=tax;S.profit-=tax;log(`年末：奖金 ${bonus} 个月，年会 ${party===0?'不办':party===1?'标准':'体面'}，纳税 ${fmt(tax)}。`,'muted');
- S.team.forEach(p=>p.salary*=1.10); S.taxable=0;S.yearSpend=0;
+ S.team.forEach(p=>{p.salary*=1.10;p.tenure=(Number.isFinite(p.tenure)?p.tenure:2)+1}); S.taxable=0;S.yearSpend=0;
  if(S.year>=3){endGame();return}
  S.year++;S.quarter=1;S.week+=12;genOpp();render();
 }
+function severanceMonths(p){
+ const tenure=Number.isFinite(p.tenure)?p.tenure:2;
+ return Math.max(1,Math.ceil(tenure));
+}
+function severanceCost(p){return +(p.salary*severanceMonths(p)).toFixed(1)}
+function layoffCandidates(){return S.team.filter(p=>p.role!=='老板')}
+function showLayoffModal(){
+ const candidates=layoffCandidates();
+ if(!candidates.length)return;
+ const host=document.createElement('div');host.className='overlay';host.id='layoffModal';
+ host.innerHTML=`<div class="modal layoff-modal">
+   <div class="big">裁员</div>
+   <p class="muted">初始团队默认已有 2 年工龄，每过一年工龄 +1。赔偿按工龄折算月薪，最低 1 个月。可以一次裁多人。</p>
+   <div class="layoff-list">
+     ${candidates.map(p=>`<label class="layoff-row">
+       <input type="checkbox" value="${p.id}">
+       <span><b>${p.name}</b><small>${p.role} · 工龄 ${Number.isFinite(p.tenure)?p.tenure:2} 年 · 月薪 ${fmt(p.salary)}${activeLoads(p).length?' · 正在项目中':''}</small></span>
+       <strong>${fmt(severanceCost(p))}</strong>
+     </label>`).join('')}
+   </div>
+   <div class="layoff-summary" id="layoffSummary">请选择要裁掉的人。</div>
+   <div class="row">
+     <button class="btn secondary" id="cancelLayoff">取消</button>
+     <button class="btn warn" id="confirmLayoff" disabled>确认裁员</button>
+   </div>
+ </div>`;
+ document.body.appendChild(host);
+ const boxes=[...host.querySelectorAll('input[type="checkbox"]')];
+ const summary=host.querySelector('#layoffSummary');
+ const confirm=host.querySelector('#confirmLayoff');
+ function sync(){
+   const ids=boxes.filter(x=>x.checked).map(x=>x.value);
+   const people=candidates.filter(p=>ids.includes(p.id));
+   const total=people.reduce((a,p)=>a+severanceCost(p),0);
+   const busy=people.filter(p=>activeLoads(p).length).length;
+   summary.innerHTML=ids.length
+     ? `裁 ${ids.length} 人 · 赔偿 ${fmt(total)}${busy?` · 其中 ${busy} 人正在项目上，团队士气和声望会受影响`:''}`
+     : '请选择要裁掉的人。';
+   confirm.disabled=!ids.length;
+   confirm.onclick=ids.length?()=>executeLayoffs(ids):null;
+ }
+ boxes.forEach(x=>x.onchange=sync);
+ host.querySelector('#cancelLayoff').onclick=()=>host.remove();
+}
+function executeLayoffs(ids){
+ const host=document.getElementById('layoffModal');
+ const people=S.team.filter(p=>ids.includes(p.id)&&p.role!=='老板');
+ if(!people.length){if(host)host.remove();return}
+ const before=S.team.length;
+ const cost=people.reduce((a,p)=>a+severanceCost(p),0);
+ const busy=people.filter(p=>activeLoads(p).length).length;
+ S.cash-=cost;S.profit-=cost;S.yearSpend+=cost;
+ S.team=S.team.filter(p=>!ids.includes(p.id)||p.role==='老板');
+ S.morale=clamp(S.morale-people.length*3-busy*2,0,100);
+ if(busy)S.reputation=clamp(S.reputation-busy,0,100);
+ log(`裁掉 ${people.length} 人，赔偿 ${fmt(cost)}。${busy?`其中 ${busy} 人仍在项目上，士气和声望受损。`:''}`,'bad');
+ if(host)host.remove();
+ render();
+ const afterBand=businessScaleBand(S.team.length);
+ if(afterBand<businessScaleBand(before))log(`公司缩到 ${afterBand} 人档，之后新刷新的业务规模也会随之下降。`,'muted');
+}
+function showHireIncentive(signedCount=1){
+ const projected=S.team.length+S.pendingHires.length;
+ const next=nextScaleAt(projected);
+ const currentBand=businessScaleBand(projected);
+ const host=document.createElement('div');host.className='growth-toast';
+ if(projected%5===0&&projected>=15){
+   host.innerHTML=`<b>规模要上一个台阶了</b><span>新人到岗后进入 ${currentBand} 人档，之后新刷业务案值整体 +1 档。毛利率不会自动变高。</span>`;
+ }else{
+   host.innerHTML=`<b>团队继续扩张</b><span>签下 ${signedCount} 人。预计到岗后 ${projected} 人，再到 ${next} 人，业务案值会再上一个档位。</span>`;
+ }
+ document.body.appendChild(host);
+ setTimeout(()=>host.classList.add('result-leave'),2200);
+ setTimeout(()=>host.remove(),2700);
+}
 function hire(){
  const person=createHireCandidate(),role=person.role,salary=person.salary;
- const fee=salary*.5;S.cash-=fee;S.pendingHires.push({person});log(`签下 ${person.name}（${role}），月薪 ${fmt(salary)}。招聘费 ${fmt(fee)}，下季度到岗。正式员工每跨 5 人档，之后刷新的业务案值会抬高，但利润不会自动变高。`,'muted');render();
+ const fee=salary*.5;
+ S.cash-=fee;S.profit-=fee;S.yearSpend+=fee;
+ S.pendingHires.push({person});
+ log(`签下 ${person.name}（${role}），月薪 ${fmt(salary)}。招聘费 ${fmt(fee)}，下季度到岗。公司每多 5 个正式员工，之后新刷的业务案值整体上一个档位。`,'good');
+ render();
+ showHireIncentive(1);
 }
 function bankrupt(){S.ended=true;showEnding(true)}
 function endGame(){S.ended=true;showEnding(false)}
@@ -517,8 +601,8 @@ function render(){
  const app=document.getElementById('app');if(!S){app.innerHTML=startHTML();return}
  const avail=available().length;
  const freeSlotsNow=totalFreeSlots(),capacityNow=totalCapacity(),usedNow=usedCapacity();
- const scale=businessScaleMultiplier(),band=businessScaleBand(),nextBand=nextScaleAt();
- app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · 144周都在后台跑，你只做12次大决定</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
+ const scaleStep=businessScaleStep(),band=businessScaleBand(),nextBand=nextScaleAt();
+ app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · 144周都在后台跑，你只做12次大决定</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
  <div class="core-stats">
    <div class="core-stat profit-core ${S.profit<0?'negative-profit':''}">
      <span>累计利润</span>
@@ -532,9 +616,9 @@ function render(){
      <small>${usedNow} 槽正在被项目占用 · 资深可双开</small>
    </div>
  </div>
- <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 ×${scale.toFixed(2)}</b><span>业务案值档位</span><small>到 ${nextBand} 人再升级 · 案值≠利润</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
+ <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
  <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2><div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div style="margin-top:14px" class="row"><button class="btn" onclick="progressQuarter()">推进一季度 →</button><span class="muted">季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</span></div>
- <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
+ <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>工龄</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${Number.isFinite(p.tenure)?p.tenure:2}年</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
 }
 function durationLabel(weeks){
  if(weeks>=48)return '1年';
