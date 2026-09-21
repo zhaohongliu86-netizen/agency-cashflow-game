@@ -11,22 +11,22 @@ const DIFF={
 
 // 每8年换一轮行业气候。30年模式会经历前四段；后两段保留给未来继续扩年限。
 const ECON_PHASES=[
- {key:'good1',label:'景气',deal:1.12,opp:1,mix:[.20,.30],shrink:.12,renewal:.05,
+ {key:'good1',label:'景气',deal:1.12,opp:1,mix:[.20,.30],shrink:.12,renewal:.05,salary:.06,
   news:'预算相对宽松，品牌愿意做更大的年度项目。接下来大单和年框会更常见。',
   cut:['客户内部突然调整预算优先级：项目继续，但先砍一半做第一阶段。','老板拍板要做，但财务说先别做那么大。预算先收一半。']},
- {key:'bad1',label:'下行',deal:.80,opp:-1,mix:[.22,.34],shrink:.35,renewal:-.08,
+ {key:'bad1',label:'下行',deal:.80,opp:-1,mix:[.22,.34],shrink:.35,renewal:-.08,salary:.01,
   news:'客户财务开始收紧。项目案值会缩水，Pitch占比上升，赢了以后被砍预算也更常见。',
   cut:['财务冻结了一半预算。项目没死，只是突然瘦了一圈。','客户说方向没问题，问题是今年预算只剩一半。']},
- {key:'flat1',label:'平稳修复',deal:.96,opp:0,mix:[.24,.44],shrink:.22,renewal:.01,
+ {key:'flat1',label:'平稳修复',deal:.96,opp:0,mix:[.24,.44],shrink:.22,renewal:.01,salary:.03,
   news:'市场不再继续往下掉，但客户更看重确定性。年框、续约和能不能稳稳落地开始变重要。',
   cut:['客户把大项目拆成两阶段，第一阶段只批了一半预算。','项目还做，但客户决定先试半套。预算同步减半。']},
- {key:'flat2',label:'平淡横盘',deal:.91,opp:0,mix:[.24,.41],shrink:.26,renewal:-.02,
+ {key:'flat2',label:'平淡横盘',deal:.91,opp:0,mix:[.24,.41],shrink:.26,renewal:-.02,salary:.02,
   news:'市场没明显变好，也没继续恶化。新业务更看关系、交付记录和价格，预算增长有限。',
   cut:['采购重新算了一遍账：预算砍一半，KPI暂时没听说要砍。','客户说先做轻一点。翻译成人话：钱只批了一半。']},
- {key:'bad2',label:'再度下行',deal:.76,opp:-1,mix:[.22,.32],shrink:.38,renewal:-.10,
+ {key:'bad2',label:'再度下行',deal:.76,opp:-1,mix:[.22,.32],shrink:.38,renewal:-.10,salary:0,
   news:'又一轮收缩开始。客户更爱比稿、更爱压价，也更容易在赢稿后临时缩水。',
   cut:['大环境不好，客户直接把预算砍成半份。','赢是赢了，预算委员会又把项目切了一刀，只剩一半。']},
- {key:'good2',label:'重新景气',deal:1.15,opp:1,mix:[.19,.50],shrink:.10,renewal:.06,
+ {key:'good2',label:'重新景气',deal:1.15,opp:1,mix:[.19,.50],shrink:.10,renewal:.06,salary:.05,
   news:'预算重新活跃，品牌开始恢复长期投入。大项目、主动邀约和续约机会都会更友好。',
   cut:['客户想先小规模启动，预算暂时按一半批。','项目确定要做，但第一阶段只先放一半预算。']}
 ];
@@ -43,6 +43,17 @@ function economyBulletin(){
  }
  return `行业风向 · ${phase.label}：${phase.news}`;
 }
+function projectPriceIndex(year=S?.year||1){
+ return Math.pow(1.03,Math.max(0,year-1));
+}
+function salaryMarketIndex(year=S?.year||1){
+ let idx=1;
+ for(let y=1;y<Math.max(1,year);y++)idx*=1+(economyPhase(y).salary||0);
+ return idx;
+}
+function freeWeeklyRate(){return salaryMarketIndex()}
+function realProjectValue(value){return value/projectPriceIndex()}
+function salaryGrowthRate(year=S?.year||1){return economyPhase(year).salary||0}
 
 const baseTeam=[
  ['老板','老板','创意',3.0,88],['策略A','策略','品牌',2.5,82],['客户A','阿康','客户',1.2,67],['客户B','阿康','客户',1.5,72],['客户总监','资深阿康','客户',3.0,84],['文案A','文案','创意',1.1,70],['文案总监','文案总监','创意',3.0,86],['美术A','美术','创意',1.2,73],['美术总监','美术总监','创意',3.0,87],['制片A','制片','制作',2.0,80]
@@ -68,7 +79,7 @@ function readSavedGame(){
 function normalizeLoadedGame(data){
  const defaults={
    pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
-   route:{pitch:0,retainer:0,small:0,free:0},
+   route:{pitch:0,retainer:0,small:0,free:0},yearStartProfit:0,
    records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
  };
  const loaded=Object.assign(defaults,data);
@@ -77,6 +88,9 @@ function normalizeLoadedGame(data){
  if(!Number.isFinite(loaded.records.maxQuarterProfit))loaded.records.maxQuarterProfit=-Infinity;
  loaded.awaitingYearEnd=!!loaded.awaitingYearEnd;
  loaded.lastBudgetShrinkYear=Number(loaded.lastBudgetShrinkYear)||0;
+ loaded.yearStartProfit=Number.isFinite(loaded.yearStartProfit)
+   ? loaded.yearStartProfit
+   : (Number(loaded.profit)||0)-(Number(loaded.taxable)||0);
  loaded.team=(loaded.team||[]).map(p=>normalizePerson(p));
  loaded.year=clamp(Number(loaded.year)||1,1,MAX_YEARS);
  loaded.quarter=clamp(Number(loaded.quarter)||1,1,4);
@@ -119,7 +133,7 @@ function showSaveToast(title,copy,bad=false){
 }
 function start(diff){
  const d=DIFF[diff];
- S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
+ S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
  S.active.push({id:uid(),name:'老客户A · 日常品牌服务',type:'retainer',value:72,margin:.42,weeks:24,left:24,people:3,quality:70,legacy:true});
  S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
  allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render(); saveGame(false);
@@ -133,9 +147,10 @@ function capacity(p){
 function seniorCount(){return S.team.filter(isSenior).length}
 function seniorRatio(){return S.team.length?seniorCount()/S.team.length:0}
 function requiredSeniorRatio(value){
- if(value>=3000)return .35;
- if(value>=1000)return .30;
- if(value>=500)return .25;
+ const real=realProjectValue(value);
+ if(real>=3000)return .35;
+ if(real>=1000)return .30;
+ if(real>=500)return .25;
  return 0;
 }
 function seniorGateInfo(value){
@@ -211,13 +226,14 @@ function scaleValueTier(values,step){
 }
 function unlockCap(){
  const n=S.team.length;
- if(n>=40)return 5000;
- if(n>=35)return 3000;
- if(n>=30)return 1800;
- if(n>=25)return 1200;
- if(n>=20)return 800;
- if(n>=15)return 600;
- return 480;
+ let base=480;
+ if(n>=40)base=5000;
+ else if(n>=35)base=3000;
+ else if(n>=30)base=1800;
+ else if(n>=25)base=1200;
+ else if(n>=20)base=800;
+ else if(n>=15)base=600;
+ return Math.round(base*projectPriceIndex()/10)*10;
 }
 function showScaleUpgrade(before,after){
  const oldBand=businessScaleBand(before),newBand=businessScaleBand(after);
@@ -251,9 +267,10 @@ function updateTeamRecord(){
  if(S&&S.records)S.records.maxTeam=Math.max(S.records.maxTeam,S.team.length);
 }
 function bigWinTier(value){
- if(value>=3000)return {level:'legend',kicker:'MEGA WIN',title:'超级大单，拿下了',note:'这已经不是一单生意，是公司履历上的一道划痕。'};
- if(value>=1000)return {level:'million',kicker:'BIG WIN',title:'千万级客户，进门了',note:'从这一单开始，别人会重新判断你们是什么体量的公司。'};
- if(value>=500)return {level:'big',kicker:'BIG PITCH',title:'大单拿下',note:'这一单够让财务表和朋友圈同时好看一点。'};
+ const real=realProjectValue(value);
+ if(real>=3000)return {level:'legend',kicker:'MEGA WIN',title:'超级大单，拿下了',note:'这已经不是一单生意，是公司履历上的一道划痕。'};
+ if(real>=1000)return {level:'million',kicker:'BIG WIN',title:'千万级客户，进门了',note:'从这一单开始，别人会重新判断你们是什么体量的公司。'};
+ if(real>=500)return {level:'big',kicker:'BIG PITCH',title:'大单拿下',note:'这一单够让财务表和朋友圈同时好看一点。'};
  return null;
 }
 function showComboFeedback(streak){
@@ -390,17 +407,18 @@ function scheduleGossipRotation(){
 }
 
 function requiredPeople(type,value,duration){
+ const real=realProjectValue(value);
  if(type==='small'){
-   if(value<=15)return 1;
-   if(value<=40)return 2;
+   if(real<=15)return 1;
+   if(real<=40)return 2;
    return 3;
  }
  if(type==='retainer'){
-   let n=value<120?3:value<300?4:value<600?5:value<1000?6:value<1600?8:value<2500?10:12;
+   let n=real<120?3:real<300?4:real<600?5:real<1000?6:real<1600?8:real<2500?10:12;
    if(duration>=48)n+=1;
    return clamp(n,3,12);
  }
- let n=value<100?3:value<300?4:value<600?5:value<1000?6:value<1800?8:value<3000?10:12;
+ let n=real<100?3:real<300?4:real<600?5:real<1000?6:real<1800?8:real<3000?10:12;
  return clamp(n,3,12);
 }
 
@@ -417,23 +435,24 @@ function makeOpportunity(forced=''){
  if(type==='small') value=scaleValueTier([8,15,25,40,60,80,120],scaleStep);
  else if(type==='retainer') value=scaleValueTier([80,120,180,300,500,800,1200,1500,2200,3000],scaleStep);
  else value=scaleValueTier([50,80,120,200,300,500,800,1200,1800,3000,5000],scaleStep);
- value=Math.round(value*d.deal*econ.deal);
+ value=Math.round(value*d.deal*econ.deal*projectPriceIndex());
  value=Math.min(value,cap);
- // 千万级以上业务一律需要比稿，不允许直接接年框。
- if(value>=1000&&type!=='pitch')type='pitch';
+ const realValue=realProjectValue(value);
+ // 实际规模达到千万级的业务一律需要比稿；名义价格上涨不改变业务等级。
+ if(realValue>=1000&&type!=='pitch')type='pitch';
  let people=2;
  let duration;
  if(type==='small') duration=pick([4,8,12]);
  else if(type==='retainer') duration=pick([24,36,48,48]);
- else if(value<100) duration=pick([8,12]);
- else if(value<300) duration=pick([12,24,24]);
- else if(value<800) duration=pick([24,36,36]);
+ else if(realValue<100) duration=pick([8,12]);
+ else if(realValue<300) duration=pick([12,24,24]);
+ else if(realValue<800) duration=pick([24,36,36]);
  else duration=pick([36,48,48]);
  people=requiredPeople(type,value,duration);
  const margin= type==='retainer'?pick([.22,.28,.33,.38]):type==='small'?pick([.45,.5,.55]):pick([.28,.34,.4,.46]);
  const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch','超级整合Pitch']};
  const pitchWeeks=type==='pitch'?pick([2,2,2,3]):0;
- const pitchFee=(type==='pitch'&&S.diff==='2016')?pick([2,3,4,5]):0;
+ const pitchFee=(type==='pitch'&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0;
  return {id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,boost:false};
 }
 function renewalChance(morale){
@@ -447,10 +466,10 @@ function maybeCreateRenewal(p){
 
  let value=Math.round(p.value*pick([.95,1,1,1.05]));
  value=Math.min(value,unlockCap());
- const drop=pick([.03,.04,.05,.06,.07]);
+ const drop=pick([.02,.03,.04]);
  const margin=Math.max(.15,+((p.margin||.28)-drop).toFixed(2));
  const duration=p.weeks||pick([24,36,48]);
- const isBig=value>=1000;
+ const isBig=realProjectValue(value)>=1000;
  const type=isBig?'pitch':'retainer';
  const baseName=String(p.name||'老客户').replace(/^续约机会 · |^续约比稿 · /,'');
  const renewal={
@@ -485,12 +504,11 @@ function genOpp(){
 }
 function log(msg,cls=''){S.log.unshift({msg,cls}); S.log=S.log.slice(0,60)}
 function executionFreeCostFor(o,freeCount){
- // 普通 Free：1万 / 人 / 周。
- return +(freeCount*1.0*o.duration).toFixed(1);
+ return +(freeCount*freeWeeklyRate()*o.duration).toFixed(1);
 }
 function pitchFreeCostFor(o,freeCount){
  const weeks=o.pitchWeeks||2;
- return +(freeCount*1.0*weeks).toFixed(1);
+ return +(freeCount*freeWeeklyRate()*weeks).toFixed(1);
 }
 function requestProject(id){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
@@ -502,7 +520,7 @@ function requestProject(id){
 function createHireCandidate(){
  const role=pick(roles);
  const skill=Math.round(62+Math.random()*27);
- const salary=+(0.9+(skill-60)*.055+(role==='策略'?0.4:0)).toFixed(1);
+ const salary=+((0.9+(skill-60)*.055+(role==='策略'?0.4:0))*salaryMarketIndex()).toFixed(1);
  return {id:uid(),name:pick(names),role,spec:role==='文案'||role==='美术'?'创意':role==='阿康'?'客户':role,salary,skill,slots:[],tenure:0};
 }
 function hireForProject(o,candidates){
@@ -548,7 +566,7 @@ function showStaffingChoice(o,freeCount){
      <div class="staffing-option">
        <h3>${isPitch?'只在比稿期用 Free':'用 Free 执行'}</h3>
        <p>${isPitch?`合同只算 ${o.pitchWeeks} 周，不把执行周期提前算进去。`:'不扩正式编制，只覆盖这个项目。'}</p>
-       <p><b>这阶段 Free 成本 ${fmt(freeCost)}</b><br><span class="muted">按普通 Free 1万 / 人 / 周计算</span></p>
+       <p><b>这阶段 Free 成本 ${fmt(freeCost)}</b><br><span class="muted">当前市场 Free 约 ${freeWeeklyRate().toFixed(1)}万 / 人 / 周（首年1万，随市场工资变化）</span></p>
        <p class="bad">${freeRisk}</p>
        <button class="btn secondary" id="confirmFree">用 ${freeCount} 个 Free ${isPitch?'去比稿':'接下来'}</button>
      </div>
@@ -742,7 +760,7 @@ function takeProject(id,useFree=false){
  const inboundBonus=o.inbound?(o.inboundBonus||12):0;
  const pWin=clamp(35+DIFF[S.diff].baseWin+staffing+boost+freePenalty+inboundBonus+clamp((S.reputation-50)*.18,-7,8),8,92);
  // 自有员工参与比稿不产生额外现金成本。只有 Free 和主动加码才产生增量费用。
- const boostCost=o.boost?Math.max(1,Math.min(18,o.value*.01)):0;
+ const boostCost=o.boost?Math.max(projectPriceIndex(),Math.min(18*projectPriceIndex(),o.value*.01)):0;
  const grossPitchCost=+(boostCost+pitchFreeCost).toFixed(1);
 
  if(grossPitchCost>0){
@@ -949,7 +967,7 @@ function resolveQuarter(){
  for(const p of S.active){
    const weeks=Math.min(12,p.left); const share=weeks/p.weeks; gross+=p.value*share; margin+=p.value*p.margin*share; p.left-=12;
  }
- const salary=payroll()*3; const office=Math.max(4,S.team.length*.45)*3;
+ const salary=payroll()*3; const office=Math.max(4,S.team.length*.45)*3*projectPriceIndex();
  const quarterNet=margin-salary-office;
  if(S.records)S.records.maxQuarterProfit=Math.max(S.records.maxQuarterProfit,quarterNet);
  S.cash += quarterNet; S.revenue+=gross; S.profit += quarterNet; S.taxable += Math.max(0,margin - salary - office); S.yearSpend+=salary+office;
@@ -1038,7 +1056,7 @@ function yearEndFeedback(bonus,party){
    '这一年收尾很体面。团队士气高涨，账户余额负责保持冷静。'
  ]);
 }
-function showYearFeedback({bonus,party,bonusCost,partyCost,tax,feedback,onContinue}){
+function showYearFeedback({bonus,party,bonusCost,partyCost,tax,feedback,salaryGrowth=0,preTaxYearProfit=0,onContinue}){
  const host=document.createElement('div');
  host.className='overlay';
  host.id='yearFeedbackModal';
@@ -1050,7 +1068,9 @@ function showYearFeedback({bonus,party,bonusCost,partyCost,tax,feedback,onContin
    <div class="year-feedback-numbers">
      <span>年终奖 <b>${bonus}个月 · ${fmt(bonusCost)}</b></span>
      <span>${partyName} <b>${fmt(partyCost)}</b></span>
+     <span>税前年度利润 <b>${fmt(preTaxYearProfit)}</b></span>
      <span>纳税 <b>${fmt(tax)}</b></span>
+     <span>明年工资涨幅 <b>${Math.round(salaryGrowth*100)}%</b></span>
    </div>
    <button class="btn" id="continueAfterYear">${S.year>=MAX_YEARS?`看${MAX_YEARS}年最终结算`:S.year%3===0?`看第${S.year}年阶段结算`:'进入下一年 →'}</button>
  </div>`;
@@ -1059,6 +1079,7 @@ function showYearFeedback({bonus,party,bonusCost,partyCost,tax,feedback,onContin
 }
 function advanceToNextYear(){
  if(S.year>=MAX_YEARS){endGame();return}
+ S.yearStartProfit=S.profit;
  S.year++;
  S.quarter=1;
  S.week+=12;
@@ -1097,19 +1118,22 @@ function showMilestoneSummary(){
 function closeYear(bonus,party){
  S.awaitingYearEnd=false;
  const bonusCost=payroll()*bonus;
- const partyCost=party===0?0:party===1?S.team.length*.3:S.team.length*.8;
+ const partyBase=party===0?0:party===1?S.team.length*.3:S.team.length*.8;
+ const partyCost=partyBase*projectPriceIndex();
  S.cash-=bonusCost+partyCost;
  S.profit-=bonusCost+partyCost;
  S.morale=clamp(S.morale + (bonus===0?-5:bonus===1?0:bonus===2?4:6)+(party===0?0:party===1?2:4),0,100);
- const tax=Math.max(0,S.taxable)*DIFF[S.diff].tax;
+ const preTaxYearProfit=S.profit-(Number.isFinite(S.yearStartProfit)?S.yearStartProfit:0);
+ const tax=Math.max(0,preTaxYearProfit)*DIFF[S.diff].tax;
  S.cash-=tax;S.profit-=tax;
  const feedback=yearEndFeedback(bonus,party);
- log(`年末：奖金 ${bonus} 个月，年会 ${party===0?'不办':party===1?'标准':'体面'}，纳税 ${fmt(tax)}。`,'muted');
+ const salaryGrowth=salaryGrowthRate();
+ log(`年末：奖金 ${bonus} 个月，年会 ${party===0?'不办':party===1?'标准':'体面'}，税前年度利润 ${fmt(preTaxYearProfit)}，纳税 ${fmt(tax)}。`,'muted');
  log(feedback,bonus===0?'bad':'good');
- S.team.forEach(p=>{p.salary*=1.10;p.tenure=(Number.isFinite(p.tenure)?p.tenure:2)+1});
+ S.team.forEach(p=>{p.salary*=1+salaryGrowth;p.tenure=(Number.isFinite(p.tenure)?p.tenure:2)+1});
  S.taxable=0;S.yearSpend=0;
  showYearFeedback({
-   bonus,party,bonusCost,partyCost,tax,feedback,
+   bonus,party,bonusCost,partyCost,tax,feedback,salaryGrowth,preTaxYearProfit,
    onContinue:()=>{
      if(S.year>=MAX_YEARS){endGame();return}
      if(S.year%3===0){showMilestoneSummary();return}
@@ -1287,7 +1311,7 @@ function showYearModal(){
  const host=document.createElement('div');host.className='overlay';host.id='modal';
  host.innerHTML=`<div class="modal">
    <div class="big">第 ${S.year} 年，分钱还是画饼？</div>
-   <p class="muted">奖金和年会会影响下一年的士气与离职风险。工资明年自动上涨10%。</p>
+   <p class="muted">奖金和年会会影响下一年的士气与离职风险。当前行业气候下，明年工资约上涨 ${Math.round(salaryGrowthRate()*100)}%。</p>
    <h3>年终奖</h3>
    <div class="choices">${[0,1,2,3].map(x=>`<div class="choice" data-bonus="${x}"><b>${x}个月</b><div class="meta">成本 ${fmt(payroll()*x)}</div></div>`).join('')}</div>
    <h3>年会</h3>
@@ -1349,13 +1373,13 @@ function render(){
      <small>${usedNow} 槽正在被项目占用 · 资深 ${seniorCount()}/${S.team.length}（${Math.round(seniorRatio()*100)}%）· 资深可双开</small>
    </div>
  </div>
- <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div><div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>每8年切换 · 会影响案值、机会、Pitch与缩水风险</small></div></div>
+ <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div><div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格指数 ×${projectPriceIndex().toFixed(2)} · 每年案值约+3%</small></div></div>
  <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
    <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button>
    <div class="quarter-action-copy">
      <div class="quarter-profit-line">当前累计利润 <b>${fmt(S.profit)}</b></div>
      <div class="quarter-status-copy">${quarterStatusCopy()}</div>
-     <small>季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</small>
+     <small>季度工资约 ${fmt(payroll()*3)} · 当前名义大单上限 ${fmt(unlockCap())}</small>
    </div>
  </div>
  <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>工龄</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${Number.isFinite(p.tenure)?p.tenure:2}年</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
