@@ -102,11 +102,9 @@ function openingProjectsForEra(diff){
      ['老客户 · 内容快单','small',30,.46,12,2,76,'mixed']
    ]
  };
- return (defs[String(diff)]||defs['2026']).map(x=>{
-   const o={id:uid(),name:x[0],type:x[1],value:x[2],margin:x[3],weeks:x[4],left:x[4],people:x[5],quality:x[6],flavor:x[7],legacy:true};
-   o.reputationValue=calculateProjectReputationValue(o);
-   return o;
- });
+ return (defs[String(diff)]||defs['2026']).map(x=>({
+   id:uid(),name:x[0],type:x[1],value:x[2],margin:x[3],weeks:x[4],left:x[4],people:x[5],quality:x[6],resourceBoost:0,requiredReputation:0,legacy:true
+ }));
 }
 
 function reputationLabel(score=S?.reputation||0){
@@ -319,26 +317,23 @@ function trackProject(o){
 }
 
 function projectReputationDelta(p){
- ensureProjectNeeds(p);
  const q=Number(p.quality)||0;
- const potential=Number(p.reputationValue)||calculateProjectReputationValue(p);
- const continuityPenalty=Number(p.reputationContinuityPenalty)||0;
- let delta=0;
- if(q>=94)delta=potential;
- else if(q>=88)delta=Math.max(1,Math.ceil(potential*.65));
- else if(q>=82&&potential>=4)delta=Math.max(1,Math.ceil(potential*.3));
- else if(q<52)delta=-Math.max(2,Math.ceil(potential*.45));
- else if(q<60)delta=-1;
- if(delta>0)delta=Math.max(0,delta-continuityPenalty);
- return delta;
+ if(q>=94)return 4;
+ if(q>=90)return 3;
+ if(q>=86)return 2;
+ if(q>=82)return 1;
+ if(q<52)return -3;
+ if(q<60)return -1;
+ return 0;
 }
 function applyProjectReputation(p){
  const delta=projectReputationDelta(p);
  if(!delta)return;
  S.reputation=clamp(S.reputation+delta,0,100);
- const title=delta>=4?'代表作级项目':delta>0?'作品开始被看见':'这次交付伤了口碑';
+ const title=delta>=3?'做成了一支代表作':delta>0?'作品开始被看见':'这次交付伤了口碑';
  log(`${title}：${p.name} 完成，质量 ${Math.round(p.quality)}，行业声望 ${delta>0?'+':''}${delta}。`,delta>0?'good':'bad');
 }
+
 function updateTeamRecord(){
  if(S&&S.records)S.records.maxTeam=Math.max(S.records.maxTeam,S.team.length);
 }
@@ -487,120 +482,78 @@ function scheduleGossipRotation(){
  },gossipReadTime(current));
 }
 
-function needProfileFor(type,name=''){
- if(name.includes('品牌焕新')||name.includes('品牌顾问'))return ['strategy','creative'];
- if(name.includes('新品'))return ['creative','strategy'];
- if(name.includes('超级')||name.includes('大型')||name.includes('整合'))return ['execution','service'];
- if(name.includes('年度战役')||name.includes('核心战役'))return ['creative','service'];
- if(name.includes('社媒')||name.includes('内容'))return ['service','creative'];
- if(type==='retainer')return ['service','strategy'];
- if(type==='small')return ['creative','execution'];
- return ['creative','strategy'];
-}
-function projectFlavor(o){
- if(o?.flavor)return o.flavor;
- const name=String(o?.name||'');
- if(name.includes('品牌焕新')||name.includes('新品上市')||name.includes('品牌顾问')||name.includes('创意'))return 'prestige';
- if(name.includes('大型整合')||name.includes('超级整合')||name.includes('社媒')||name.includes('内容长期')||name.includes('年度整合'))return 'delivery';
- if(o?.type==='retainer')return 'delivery';
- return 'mixed';
-}
-function calculateProjectReputationValue(o){
- const real=realProjectValue(o.value||0);
- const sizeBase=real>=3000?5:real>=1000?4:real>=500?3:real>=150?2:1;
- const flavor=projectFlavor(o);
- let value=sizeBase+(flavor==='prestige'?3:flavor==='delivery'?-1:1)-(o.type==='retainer'?1:0);
- return clamp(Math.round(value),1,9);
-}
 function ensureProjectNeeds(o){
  if(!o)return o;
- if(!o.flavor)o.flavor=projectFlavor(o);
- if(!Number.isFinite(o.reputationValue))o.reputationValue=calculateProjectReputationValue(o);
+ o.resourceBoost=clamp(Math.round(Number(o.resourceBoost)||0),0,2);
+ if(!Number.isFinite(o.requiredReputation))o.requiredReputation=0;
+ delete o.reputationValue;
+ delete o.flavor;
+ delete o.pitchSupport;
+ delete o.pitchSupportPeople;
  return o;
 }
 function applyProjectEconomics(o){
  ensureProjectNeeds(o);
- if(o.economicsApplied)return o;
- const flavor=projectFlavor(o);
- if(flavor==='delivery'){
-   o.value=Math.min(unlockCap(),Math.max(1,Math.round(o.value*1.15)));
-   o.margin=+(Math.max(.16,o.margin-.04)).toFixed(2);
- }else if(flavor==='prestige'){
-   o.value=Math.max(1,Math.round(o.value*.88));
-   o.margin=+(Math.min(.58,o.margin+.05)).toFixed(2);
+ if(!o.reputationMarginApplied){
+   const repMargin=reputationEffects().marginBonus;
+   o.reputationMarginBonus=repMargin;
+   o.margin=+clamp((Number(o.margin)||.3)+repMargin,.14,.60).toFixed(2);
+   o.reputationMarginApplied=true;
  }
- const repMargin=reputationEffects().marginBonus;
- o.reputationMarginBonus=repMargin;
- o.margin=+clamp(o.margin+repMargin,.14,.60).toFixed(2);
  o.people=requiredPeople(o.type,o.value,o.duration);
- o.reputationValue=calculateProjectReputationValue(o);
- o.economicsApplied=true;
  return o;
 }
-function pitchSupportStrength(o){
- const people=o?.pitchSupportPeople||[];
- if(!o?.pitchSupport||!people.length)return 0;
- const avg=people.reduce((a,p)=>a+(Number(p.skill)||70),0)/people.length;
- return clamp(Math.round((avg-62)*.35),5,10);
+function reputationRequirementFor(o){
+ if(o.inbound||o.renewal)return 0;
+ const real=realProjectValue(o.value||0);
+ let pool;
+ if(o.type==='small')pool=[0,0,0,0,30];
+ else if(o.type==='retainer')pool=real>=600?[0,35,45,50]:[0,0,30,40];
+ else if(real>=3000)pool=[55,65,75,85];
+ else if(real>=1500)pool=[40,50,60,70];
+ else if(real>=800)pool=[0,40,50,60];
+ else if(real>=300)pool=[0,0,35,45,50];
+ else pool=[0,0,0,35,45];
+ let req=pick(pool);
+ if((S?.year||1)<=1)req=Math.min(req,50);
+ return req;
 }
-function projectMatch(o){
- const supportBonus=pitchSupportStrength(o);
- return {score:72+supportBonus,bonus:supportBonus,pitchBonus:supportBonus,qualityBonus:0,label:'',supportBonus};
+function resourceBoostUnit(teamSize=S?.team?.length||10){
+ return Math.max(1,Math.round(teamSize/10));
 }
-function projectMatchDetail(){return ''}
-function projectNeedLabel(){return 'Pitch外援'}
-function pitchSupportCost(o){
- const count=(o.pitchSupportPeople||[]).length;
- return +(count*freeWeeklyRate()*(o.pitchWeeks||2)).toFixed(1);
+function resourceBoostPeople(o){
+ return clamp(Math.round(Number(o?.resourceBoost)||0),0,2)*resourceBoostUnit();
 }
-function togglePitchSupport(id){
- const o=S.opp.find(x=>x.id===id);if(!o||o.type!=='pitch')return;
- if(o.pitchSupport){
-   o.pitchSupport=false;
-   o.pitchSupportPeople=[];
- }else{
-   o.pitchSupport=true;
-   o.pitchSupportPeople=Array.from({length:2},()=>createHireCandidate());
+function resourceBoostWinBonus(o){
+ return clamp(Math.round(Number(o?.resourceBoost)||0),0,2)*6;
+}
+function resourceBoostQualityBonus(o){
+ return clamp(Math.round(Number(o?.resourceBoost)||0),0,2)*5;
+}
+function maxResourceBoostLevel(o){
+ const unit=resourceBoostUnit();
+ const spare=Math.max(0,available().length-(Number(o?.people)||0));
+ return clamp(Math.floor(spare/unit),0,2);
+}
+function toggleResourceBoost(id){
+ const o=S.opp.find(x=>x.id===id);if(!o)return;
+ if((o.requiredReputation||0)>S.reputation)return;
+ const max=maxResourceBoostLevel(o);
+ if(max<=0){
+   log(`${o.name} 没有足够的空闲正式人力做资源加码。`,'muted');
+   return;
  }
+ const current=clamp(Math.round(Number(o.resourceBoost)||0),0,2);
+ o.resourceBoost=current>=max?0:current+1;
  render();saveGame(false);
 }
-function showPitchSupportRetentionChoice(o,onChoice){
- const people=o.pitchSupportPeople||[];
- if(!people.length){onChoice('none');return}
- const host=document.createElement('div');
- host.className='overlay';host.id='pitchSupportRetentionModal';
- const monthly=people.reduce((a,p)=>a+p.salary,0);
- const fee=+(monthly*.5).toFixed(1);
- const execCost=+(people.length*freeWeeklyRate()*o.duration).toFixed(1);
- host.innerHTML=`<div class="modal staffing-modal">
-   <div class="big">这批 Pitch Free，留不留？</div>
-   <p><b>${o.name}</b> 已经赢了。这 ${people.length} 位外部同事在比稿期帮你把方案往上抬了一截。</p>
-   <div class="staffing-options">
-     <div class="staffing-option">
-       <h3>转成正式员工</h3>
-       <p>${people.map(p=>`${p.role} · 能力 ${p.skill}`).join('<br>')}</p>
-       <p><b>转正成本约 ${fmt(fee)}</b><br>以后每月固定工资 +${fmt(monthly)}</p>
-       <button class="btn" id="retainPitchFree">留下他们</button>
-     </div>
-     <div class="staffing-option">
-       <h3>继续按 Free 合作</h3>
-       <p>不增加正式编制，执行期继续按项目合作。</p>
-       <p><b>执行合作成本约 ${fmt(execCost)}</b></p>
-       <button class="btn secondary" id="keepPitchFreeExternal">继续用 Free</button>
-     </div>
-   </div>
- </div>`;
- document.body.appendChild(host);
- host.querySelector('#retainPitchFree').onclick=()=>{
-   host.remove();
-   const before=S.team.length;
-   S.cash-=fee;S.profit-=fee;S.yearSpend+=fee;
-   people.forEach(p=>{S.team.push(p);assignPerson(p,o.duration)});
-   showScaleUpgrade(before,S.team.length);
-   log(`把 ${people.length} 位 Pitch Free 留进正式团队。招聘成本 ${fmt(fee)}，每月固定工资 +${fmt(monthly)}。`,'good');
-   onChoice('converted');
- };
- host.querySelector('#keepPitchFreeExternal').onclick=()=>{host.remove();onChoice('external')};
+function extendPitchBoostAssignments(people,pitchWeeks,duration){
+ for(const p of people||[]){
+   normalizePerson(p);
+   const idx=p.slots.findIndex(w=>w===pitchWeeks);
+   if(idx>=0)p.slots[idx]=duration;
+   else assignPerson(p,duration);
+ }
 }
 
 function requiredPeople(type,value,duration){
