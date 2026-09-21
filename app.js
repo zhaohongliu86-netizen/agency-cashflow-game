@@ -163,14 +163,23 @@ function reputationLabel(score=S?.reputation||0){
 }
 
 function reputationEffects(score=S?.reputation||0){
- const pitchBonus=clamp(Math.round((score-50)*.30),-6,12);
- const oppBonus=score>=85?2:score>=60?1:0;
- const marginBonus=score>=90?.06:score>=75?.04:score>=60?.02:0;
- return {pitchBonus,oppBonus,marginBonus};
+ const mature=(S?.year||1)>=4;
+ const pitchBonus=mature?clamp(Math.round((score-50)*.12),-3,5):0;
+ const oppBonus=mature?(score>=85?2:score>=60?1:score<30?-1:0):0;
+ const marginBonus=mature?(score>=90?.06:score>=75?.04:score>=60?.02:score<30?-.03:score<40?-.015:0):0;
+ const talentSkill=score>=90?6:score>=75?4:score>=60?2:score<25?-5:score<40?-3:0;
+ const talentPay=score>=90?.88:score>=75?.92:score>=60?.96:score<25?1.12:score<40?1.08:1;
+ return {pitchBonus,oppBonus,marginBonus,talentSkill,talentPay,mature};
 }
 function reputationImpactText(){
  const e=reputationEffects();
- return `新业务 ${e.oppBonus?'+':''}${e.oppBonus} · Pitch信任 ${e.pitchBonus>=0?'+':''}${e.pitchBonus}% · 主动邀约 ${Math.round(inboundChance()*100)}%`;
+ const later=e.mature
+   ? `新业务 ${e.oppBonus>=0?'+':''}${e.oppBonus} · 毛利 ${e.marginBonus>=0?'+':''}${Math.round(e.marginBonus*100)}pt`
+   : '第4年起影响新业务与毛利';
+ const talent=e.talentSkill
+   ? `人才池 ${e.talentSkill>0?'+':''}${e.talentSkill}能力 · 薪资×${e.talentPay.toFixed(2)}`
+   : '人才市场正常';
+ return `${later} · ${talent} · 主动邀约 ${Math.round(inboundChance()*100)}%`;
 }
 function agencyType(){
  const caps=companyCapabilities();
@@ -437,12 +446,15 @@ function showComboFeedback(streak){
 }
 function inboundChance(){
  let chance=.02;
- if(S.reputation>=40)chance+=.04;
- if(S.reputation>=55)chance+=.06;
- if(S.reputation>=70)chance+=.08;
- if(S.reputation>=85)chance+=.10;
- if(S.reputation>=95)chance+=.08;
- chance+=Math.min(.12,(S.qualityMomentum||0)*.04);
+ const mature=(S?.year||1)>=4;
+ if(mature){
+   if(S.reputation>=40)chance+=.04;
+   if(S.reputation>=55)chance+=.06;
+   if(S.reputation>=70)chance+=.08;
+   if(S.reputation>=85)chance+=.10;
+   if(S.reputation>=95)chance+=.08;
+ }
+ chance+=Math.min(mature?.12:.04,(S.qualityMomentum||0)*(mature?.04:.02));
  return clamp(chance,0,.52);
 }
 function createInboundOpportunity(){
@@ -733,8 +745,9 @@ function requestProject(id){
 }
 function createHireCandidate(requestedRole=''){
  const role=requestedRole||pick(roles);
- const skill=Math.round(68+Math.random()*23);
- const salary=salaryFor(role,skill);
+ const market=reputationEffects();
+ const skill=clamp(Math.round(68+Math.random()*23+market.talentSkill),60,96);
+ const salary=+(salaryFor(role,skill)*market.talentPay).toFixed(1);
  return {id:uid(),name:pick(names),role:roleTitle(role,skill),spec:roleSpec(role),salary,skill,slots:[],tenure:0};
 }
 function candidateImpactHTML(person){
