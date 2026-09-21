@@ -105,7 +105,12 @@ function starterSkill(scaleKey,role,index){
  const base={策略:73,阿康:70,文案:73,美术:73,制片:71}[role]||72;
  const bias=scaleKey==='boutique6'?4:scaleKey==='growth20'?1:-1;
  const senior=index===0?(scaleKey==='boutique6'?5:10):(index>0&&index%6===0?6:0);
- return clamp(base+bias+senior-(index%4)*2,65,90);
+ const orgBias=
+   scaleKey==='integrated40'&&(role==='阿康'||role==='制片')?10:
+   scaleKey==='integrated40'&&role==='策略'?5:
+   scaleKey==='growth20'&&role==='策略'?5:
+   scaleKey==='growth20'&&(role==='阿康'||role==='制片')?2:0;
+ return clamp(base+bias+senior-(index%4)*2+orgBias,65,92);
 }
 function salaryFor(role,skill){
  const seniorPremium=skill>=84?0.45:0;
@@ -203,7 +208,7 @@ function normalizeLoadedGame(data){
    records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
  };
  const loaded=Object.assign(defaults,data);
- if(!START_SCALES[loaded.scale]){
+ if(!data.scale||!START_SCALES[data.scale]){
    const n=(loaded.team||[]).length;
    loaded.scale=n<=10?'boutique6':n>=32?'integrated40':'growth20';
  }
