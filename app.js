@@ -78,7 +78,9 @@ function makeOpportunity(forced=''){
  else duration=pick([36,48,48]);
  const margin= type==='retainer'?pick([.22,.28,.33,.38]):type==='small'?pick([.45,.5,.55]):pick([.28,.34,.4,.46]);
  const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch','超级整合Pitch']};
- return {id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,freeAllowed:true,boost:false};
+ const pitchWeeks=type==='pitch'?pick([2,2,2,3]):0;
+ const pitchFee=(type==='pitch'&&S.diff==='2016')?pick([2,3,4,5]):0;
+ return {id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,boost:false};
 }
 function genOpp(){
  const n=DIFF[S.diff].opp + (S.reputation>=70?1:0); S.opp=[]; for(let i=0;i<n;i++) S.opp.push(makeOpportunity());
@@ -86,13 +88,17 @@ function genOpp(){
  if(S.team.length<30) S.opp=S.opp.filter(o=>o.value<1000);
 }
 function log(msg,cls=''){S.log.unshift({msg,cls}); S.log=S.log.slice(0,60)}
-function freeCostFor(o,freeCount){
+function executionFreeCostFor(o,freeCount){
  return +(freeCount*1.2*Math.ceil(o.duration/4)).toFixed(1);
+}
+function pitchFreeCostFor(o,freeCount){
+ const weeks=o.pitchWeeks||2;
+ return +(freeCount*1.2*(weeks/4)).toFixed(1);
 }
 function requestProject(id){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
  const lack=Math.max(0,o.people-available().length);
- if(lack>0){showFreeChoice(o,lack);return}
+ if(lack>0){showStaffingChoice(o,lack);return}
  takeProject(id,false);
 }
 function createHireCandidate(){
@@ -104,47 +110,47 @@ function createHireCandidate(){
 function hireForProject(o,candidates){
  const fee=candidates.reduce((a,p)=>a+p.salary,0);
  const monthly=candidates.reduce((a,p)=>a+p.salary,0);
- S.cash-=fee;S.yearSpend+=fee;
+ S.cash-=fee;S.yearSpend+=fee;S.profit-=fee;
  candidates.forEach(p=>S.team.push(p));
- log(`为 ${o.name} 加急招了 ${candidates.length} 人，招聘费 ${fmt(fee)}；每月固定工资增加 ${fmt(monthly)}。`,'muted');
+ log(`为 ${o.name} 先扩了 ${candidates.length} 个正式编制，招聘费 ${fmt(fee)}；每月固定工资 +${fmt(monthly)}。`,'muted');
  render();
  takeProject(o.id,false);
 }
-function showFreeChoice(o,freeCount){
+function showStaffingChoice(o,freeCount){
  const old=document.getElementById('freeModal'); if(old)old.remove();
- const freeCost=freeCostFor(o,freeCount);
+ const isPitch=o.type==='pitch';
+ const freeCost=isPitch?pitchFreeCostFor(o,freeCount):executionFreeCostFor(o,freeCount);
  const share=freeCount/o.people;
  const candidates=Array.from({length:freeCount},()=>createHireCandidate());
  const hireFee=candidates.reduce((a,p)=>a+p.salary,0);
  const newPayroll=candidates.reduce((a,p)=>a+p.salary,0);
  const host=document.createElement('div');host.className='overlay';host.id='freeModal';
- let freeRisk;
- if(o.type==='pitch'){
-   freeRisk=share>.5
-     ? `Free 占到 ${Math.round(share*100)}%，超过一半：Pitch 胜率会下降约 8 个百分点，执行质量也更难控。`
-     : `Free 不超过项目人力的一半：不会直接降低 Pitch 胜率，但执行质量仍有轻微风险。`;
- }else{
-   freeRisk=share>.5
-     ? `Free 占到 ${Math.round(share*100)}%，项目能接，但外部团队过半，执行质量与声望风险更高。`
-     : `Free 不超过一半，主要代价是项目成本和轻微执行质量风险。`;
- }
+
+ const freeRisk=isPitch
+   ? (share>.5
+      ? `Free 占到 ${Math.round(share*100)}%，超过一半：Pitch 胜率约再降 8 个百分点。这里只签 ${o.pitchWeeks} 周比稿期，不包含后续执行。`
+      : `Free 只覆盖 ${o.pitchWeeks} 周比稿期。赢稿后，再决定让他们转正还是继续以 Free 身份执行。`)
+   : (share>.5
+      ? `Free 占到 ${Math.round(share*100)}%，执行可以接，但外部团队过半，质量和声望风险更高。`
+      : `Free 覆盖整个执行周期，代价是项目成本和轻微执行质量风险。`);
+
  host.innerHTML=`<div class="modal staffing-modal">
    <div class="big">人手不够，怎么补？</div>
    <p><b>${o.name}</b> 需要 ${o.people} 人，现在只有 ${available().length} 名可承担新项目的人，还差 <b>${freeCount} 人</b>。</p>
    <div class="staffing-options">
      <div class="staffing-option">
-       <h3>招正式员工</h3>
-       <p>加急招 ${freeCount} 人，本季度内到岗。</p>
+       <h3>先招正式员工</h3>
+       <p>补 ${freeCount} 个正式编制，直接进入团队。</p>
        <p><b>招聘费约 ${fmt(hireFee)}</b><br>以后每月固定工资 +${fmt(newPayroll)}</p>
-       <p class="muted">${o.type==='pitch'?'即使 Pitch 输了，人也已经招进来了。':'长期成本更高，但不会吃 Free 的质量惩罚。'}</p>
-       <button class="btn" id="confirmHire">招 ${freeCount} 人再${o.type==='pitch'?'去比稿':'接下来'}</button>
+       <p class="muted">${isPitch?'Pitch 输了，人也已经招进来了。':'长期成本更高，但不承担 Free 的执行风险。'}</p>
+       <button class="btn" id="confirmHire">招 ${freeCount} 人再${isPitch?'去比稿':'接下来'}</button>
      </div>
      <div class="staffing-option">
-       <h3>用 Free</h3>
-       <p>不扩正式编制，只覆盖这一个项目。</p>
-       <p><b>预计 Free 成本 ${fmt(freeCost)}</b></p>
+       <h3>${isPitch?'只在比稿期用 Free':'用 Free 执行'}</h3>
+       <p>${isPitch?`合同只算 ${o.pitchWeeks} 周，不把执行周期提前算进去。`:'不扩正式编制，只覆盖这个项目。'}</p>
+       <p><b>这阶段 Free 成本 ${fmt(freeCost)}</b></p>
        <p class="bad">${freeRisk}</p>
-       <button class="btn secondary" id="confirmFree">用 ${freeCount} 个 Free ${o.type==='pitch'?'去比稿':'接下来'}</button>
+       <button class="btn secondary" id="confirmFree">用 ${freeCount} 个 Free ${isPitch?'去比稿':'接下来'}</button>
      </div>
    </div>
    <button class="btn secondary staffing-cancel" id="cancelFree">先不接</button>
@@ -154,50 +160,138 @@ function showFreeChoice(o,freeCount){
  host.querySelector('#confirmFree').onclick=()=>{host.remove();takeProject(o.id,true)};
  host.querySelector('#confirmHire').onclick=()=>{host.remove();hireForProject(o,candidates)};
 }
+function startDirectExecution(o,selected,freeCount,freeCost,teamScore){
+ selected.forEach(p=>assignPerson(p,o.duration));
+ const freeShare=freeCount/o.people;
+ const quality=clamp(teamScore+Math.random()*12-4-(freeCount?freeShare*10:0),42,98);
+ if(freeCount){
+   S.cash-=freeCost;S.yearSpend+=freeCost;S.profit-=freeCost;S.route.free+=freeCount;
+   log(`执行期用了 ${freeCount} 个 Free，成本 ${fmt(freeCost)}。`,'muted');
+ }
+ S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false});
+ S.reputation=clamp(S.reputation+(quality>84?2:quality<60?-2:0),0,100);
+ log(`接下：${o.name}，案值 ${fmt(o.value)}。`,'good');
+ S.opp=S.opp.filter(x=>x.id!==o.id);
+ render();
+ showProjectResult({won:true,type:o.type,name:o.name,value:o.value,cost:freeCost,pWin:null});
+}
+function finalizePitchExecution(o,selected,freeCount,mode,teamScore){
+ const freeShare=freeCount/o.people;
+ let qualityPenalty=0;
+
+ if(mode==='convert'){
+   const converts=Array.from({length:freeCount},()=>createHireCandidate());
+   const monthly=converts.reduce((a,p)=>a+p.salary,0);
+   const conversionFee=+(monthly*.5).toFixed(1);
+   S.cash-=conversionFee;S.yearSpend+=conversionFee;S.profit-=conversionFee;
+   converts.forEach(p=>{S.team.push(p);assignPerson(p,o.duration)});
+   selected.forEach(p=>assignPerson(p,o.duration));
+   log(`赢稿后把 ${freeCount} 个 Free 转成正式员工。转正成本 ${fmt(conversionFee)}，每月固定工资 +${fmt(monthly)}。`,'good');
+ }else if(mode==='free'){
+   const executionFreeCost=executionFreeCostFor(o,freeCount);
+   S.cash-=executionFreeCost;S.yearSpend+=executionFreeCost;S.profit-=executionFreeCost;S.route.free+=freeCount;
+   selected.forEach(p=>assignPerson(p,o.duration));
+   qualityPenalty=freeShare*10;
+   log(`赢稿后继续用 ${freeCount} 个 Free 执行 ${durationLabel(o.duration)}，执行期成本 ${fmt(executionFreeCost)}。`,'muted');
+ }else{
+   selected.forEach(p=>assignPerson(p,o.duration));
+ }
+
+ const quality=clamp(teamScore+Math.random()*14-5+(o.boost?4:0)-qualityPenalty,42,98);
+ S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false});
+ S.reputation=clamp(S.reputation+(quality>82?3:quality<62?-2:1),0,100);
+ render();
+}
+function showPostPitchExecutionChoice(o,selected,freeCount,teamScore){
+ const host=document.createElement('div');host.className='overlay';host.id='executionStaffingModal';
+ const converts=Array.from({length:freeCount},()=>createHireCandidate());
+ const monthly=converts.reduce((a,p)=>a+p.salary,0);
+ const conversionFee=+(monthly*.5).toFixed(1);
+ const executionFreeCost=executionFreeCostFor(o,freeCount);
+
+ host.innerHTML=`<div class="modal staffing-modal">
+   <div class="big">稿赢了，Free 怎么办？</div>
+   <p><b>${o.name}</b> 接下来要执行 ${durationLabel(o.duration)}。刚才参与 Pitch 的 ${freeCount} 个 Free，合同只到比稿结束。</p>
+   <div class="staffing-options">
+     <div class="staffing-option">
+       <h3>把 Free 转正</h3>
+       <p>熟悉项目的人直接留下，进入正式编制。</p>
+       <p><b>转正成本约 ${fmt(conversionFee)}</b><br>以后每月固定工资 +${fmt(monthly)}</p>
+       <p class="muted">执行更稳定，但从这一刻开始背长期人力成本。</p>
+       <button class="btn" id="convertFree">转正 ${freeCount} 人</button>
+     </div>
+     <div class="staffing-option">
+       <h3>继续用 Free</h3>
+       <p>不增加正式编制，让他们继续跟完整个执行周期。</p>
+       <p><b>执行期 Free 成本 ${fmt(executionFreeCost)}</b></p>
+       <p class="bad">Free 占比 ${Math.round((freeCount/o.people)*100)}%，长期执行会带来一定质量风险。</p>
+       <button class="btn secondary" id="continueFree">继续用 Free</button>
+     </div>
+   </div>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#convertFree').onclick=()=>{
+   host.remove();
+   // Recreate equivalent converted staff at commit time to keep the choice deterministic enough for play.
+   const actual=converts;
+   const actualMonthly=actual.reduce((a,p)=>a+p.salary,0);
+   const actualFee=+(actualMonthly*.5).toFixed(1);
+   S.cash-=actualFee;S.yearSpend+=actualFee;S.profit-=actualFee;
+   actual.forEach(p=>{S.team.push(p);assignPerson(p,o.duration)});
+   selected.forEach(p=>assignPerson(p,o.duration));
+   const quality=clamp(teamScore+Math.random()*14-5+(o.boost?4:0),42,98);
+   S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false});
+   S.reputation=clamp(S.reputation+(quality>82?3:quality<62?-2:1),0,100);
+   log(`赢稿后把 ${freeCount} 个 Free 转正。转正成本 ${fmt(actualFee)}，每月固定工资 +${fmt(actualMonthly)}。`,'good');
+   render();
+ };
+ host.querySelector('#continueFree').onclick=()=>{
+   host.remove();
+   finalizePitchExecution(o,selected,freeCount,'free',teamScore);
+ };
+}
 function takeProject(id,useFree=false){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
  const avail=available();
  const internal=Math.min(avail.length,o.people);
  const freeCount=Math.max(0,o.people-internal);
- if(freeCount>0&&!useFree){showFreeChoice(o,freeCount);return}
+ if(freeCount>0&&!useFree){showStaffingChoice(o,freeCount);return}
  const selected=[...avail].sort((a,b)=>b.skill-a.skill).slice(0,internal);
  const teamScore=selected.length?selected.reduce((a,p)=>a+p.skill,0)/selected.length:55;
- const freeShare=freeCount/o.people;
- const freeQualityPenalty=freeCount?freeShare*10:0;
- const freeCost=freeCount?freeCostFor(o,freeCount):0;
  S.route[o.type]++;
- if(freeCount){
-   S.cash-=freeCost;S.yearSpend+=freeCost;S.route.free+=freeCount;
-   log(`用了 ${freeCount} 个 Free，成本 ${fmt(freeCost)}。`,'muted');
- }
 
- // 年框和散活是直接接单，不参与 Pitch 随机开奖。
+ // 年框和散活直接进入执行，因此 Free 成本按完整执行周期计算。
  if(o.type!=='pitch'){
-   selected.forEach(p=>assignPerson(p,o.duration));
-   const quality=clamp(teamScore+Math.random()*12-4-freeQualityPenalty,42,98);
-   S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false});
-   S.reputation=clamp(S.reputation+(quality>84?2:quality<60?-2:0),0,100);
-   log(`接下：${o.name}，案值 ${fmt(o.value)}。`,'good');
-   S.opp=S.opp.filter(x=>x.id!==id);
-   render();
-   showProjectResult({won:true,type:o.type,name:o.name,value:o.value,cost:freeCost,pWin:null});
+   const freeCost=freeCount?executionFreeCostFor(o,freeCount):0;
+   startDirectExecution(o,selected,freeCount,freeCost,teamScore);
    return;
  }
 
- // 只有 Pitch 才计算胜率、投入和赢输。
+ // Pitch 阶段独立计算：Free 只签 2–3 周，不占用完整执行周期。
+ const freeShare=freeCount/o.people;
+ const pitchFreeCost=freeCount?pitchFreeCostFor(o,freeCount):0;
  const staffing=clamp((teamScore-72)*.35,-8,10);
  const boost=o.boost?pick([5,6,7,8,9,10,11,12]):0;
  const freePenalty=freeShare>.5?-8:0;
  const pWin=clamp(35+DIFF[S.diff].baseWin+staffing+boost+freePenalty+clamp((S.reputation-50)*.18,-7,8),8,92);
  const pitchCost=Math.max(1,Math.min(12,o.value*.012))+(o.boost?Math.max(1,o.value*.01):0);
- S.cash-=pitchCost;S.yearSpend+=pitchCost;S.totalPitches++;
+ const grossPitchCost=+(pitchCost+pitchFreeCost).toFixed(1);
+
+ S.cash-=grossPitchCost;S.yearSpend+=grossPitchCost;S.profit-=grossPitchCost;
+ if(freeCount){S.route.free+=freeCount;log(`比稿期用了 ${freeCount} 个 Free，共 ${o.pitchWeeks} 周，成本 ${fmt(pitchFreeCost)}。`,'muted')}
+
+ const pitchFee=o.pitchFee||0;
+ if(pitchFee>0){
+   S.cash+=pitchFee;S.revenue+=pitchFee;S.profit+=pitchFee;S.taxable+=pitchFee;
+   log(`2016 比稿费到账：${fmt(pitchFee)}，无论输赢都收。`,'good');
+ }
+
+ S.totalPitches++;
  const won=Math.random()*100<pWin;
+ const netPitchCost=+(grossPitchCost-pitchFee).toFixed(1);
+
  if(won){
    S.wins++;S.winStreak++;S.lossStreak=0;
-   selected.forEach(p=>assignPerson(p,o.duration));
-   const quality=clamp(teamScore+Math.random()*14-5+(o.boost?4:0)-freeQualityPenalty,42,98);
-   S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false});
-   S.reputation=clamp(S.reputation+(quality>82?3:quality<62?-2:1),0,100);
    log(`赢了：${o.name}，案值 ${fmt(o.value)}，当时胜率约 ${pWin.toFixed(0)}%。`,'good');
    if(S.winStreak>=3){
      S.winStreak=0;
@@ -207,17 +301,29 @@ function takeProject(id,useFree=false){
    }
  }else{
    S.losses++;S.lossStreak++;S.winStreak=0;S.reputation=clamp(S.reputation-1,0,100);
-   log(`输了：${o.name}。烧掉 ${fmt(pitchCost)}，提案室里只剩半瓶矿泉水。`,'bad');
+   const lossText=pitchFee>0
+     ? `输了：${o.name}。比稿总投入 ${fmt(grossPitchCost)}，收回比稿费 ${fmt(pitchFee)}，净成本 ${fmt(Math.max(0,netPitchCost))}。`
+     : `输了：${o.name}。比稿投入 ${fmt(grossPitchCost)}。`;
+   log(lossText,'bad');
    if(S.lossStreak>=3){S.lossStreak=0;maybeLeave()}
  }
+
  S.opp=S.opp.filter(x=>x.id!==id);
  render();
- showProjectResult({won,type:o.type,name:o.name,value:o.value,cost:pitchCost+freeCost,pWin});
+
+ showProjectResult({
+   won,type:o.type,name:o.name,value:o.value,
+   cost:Math.max(0,netPitchCost),grossCost:grossPitchCost,pitchFee,pWin,
+   afterClose:()=>{
+     if(!won)return;
+     if(freeCount>0&&useFree)showPostPitchExecutionChoice(o,selected,freeCount,teamScore);
+     else finalizePitchExecution(o,selected,0,'internal',teamScore);
+   }
+ });
 }
-function showProjectResult({won,type,name,value,cost,pWin}){
+function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0,afterClose=null}){
  const old=document.getElementById('pitchResultModal'); if(old)old.remove();
 
- // 年框和散活只做轻提示，不抢占操作。
  if(type!=='pitch'){
    const host=document.createElement('div');
    host.className='result-toast result-win';
@@ -228,7 +334,6 @@ function showProjectResult({won,type,name,value,cost,pWin}){
    return;
  }
 
- // Pitch 必须明确看到结果，用户手动继续。
  const host=document.createElement('div');
  host.className=`overlay pitch-result-overlay ${won?'pitch-win':'pitch-loss'}`;
  host.id='pitchResultModal';
@@ -237,17 +342,20 @@ function showProjectResult({won,type,name,value,cost,pWin}){
  const streak=won && S.winStreak>1
    ? `连续 ${S.winStreak} 次赢稿`
    : (!won && S.lossStreak>1 ? `连续 ${S.lossStreak} 次丢稿` : '');
+ const feeLine=pitchFee>0
+   ? `比稿投入 ${fmt(grossCost)} · 比稿费 +${fmt(pitchFee)} · 净比稿成本 ${fmt(cost)}`
+   : `本次比稿投入 ${fmt(grossCost||cost)}`;
  host.innerHTML=`<div class="pitch-result-card">
    <div class="pitch-result-kicker">PITCH RESULT</div>
    <div class="pitch-result-title">${won?'赢稿！':'丢稿。'}</div>
    <div class="pitch-result-project">${name}</div>
-   <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:`投入损失 ${fmt(cost)}`}</div>
-   <div class="pitch-result-meta">当时胜率约 ${pWin.toFixed(0)}%${streak?` · ${streak}`:''}</div>
-   <button class="btn pitch-result-button" id="closePitchResult">${won?'收下，继续经营':'认了，继续经营'}</button>
+   <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:`净损失 ${fmt(cost)}`}</div>
+   <div class="pitch-result-meta">${feeLine}<br>当时胜率约 ${pWin.toFixed(0)}%${streak?` · ${streak}`:''}</div>
+   <button class="btn pitch-result-button" id="closePitchResult">${won?'安排执行人力':'认了，继续经营'}</button>
  </div>`;
  document.body.appendChild(host);
  host.querySelector('#closePitchResult').focus();
- host.querySelector('#closePitchResult').onclick=()=>host.remove();
+ host.querySelector('#closePitchResult').onclick=()=>{host.remove();if(afterClose)afterClose()};
 }
 function maybeLeave(){
  let risk=.42-clamp((S.morale-50)/130,0,.25); if(Math.random()>risk){log('三连败之后团队情绪低，但这次没人辞职。','muted');return}
@@ -325,9 +433,13 @@ function cardHTML(o){
  const isPitch=o.type==='pitch';
  const staffingNote=lack?` · 缺 ${lack} 人`:'';
  const secondLine=isPitch
-   ? `基础赢率约 ${35+DIFF[S.diff].baseWin}%${staffingNote}`
+   ? `比稿期 ${o.pitchWeeks}周 · 基础赢率约 ${35+DIFF[S.diff].baseWin}%${staffingNote}`
    : `无需比稿 · 直接接单${staffingNote}`;
- return `<div class="card"><span class="tag">${o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${o.people}人 · ${durationLabel(o.duration)}（${o.duration}周）<br>${secondLine}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加人力成本 +5~12%'}</button>`:''}</div></div>`
+ const feeLine=isPitch&&o.pitchFee>0?`<br>2016 比稿费 ${fmt(o.pitchFee)} · 无论输赢`:'';
+ const durationLine=isPitch
+   ? `执行期 ${durationLabel(o.duration)}（赢稿后才占用）`
+   : `周期 ${durationLabel(o.duration)}（${o.duration}周）`;
+ return `<div class="card"><span class="tag">${o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${o.people}人 · ${durationLine}<br>${secondLine}${feeLine}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加人力成本 +5~12%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>你有三年。客户不保证续约，Pitch不保证赢，员工不保证不跑。唯一保证的是工资每年涨10%。</p><div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">一局约 5–8 分钟。目标不是找到最优解，而是看看你会把公司经营成什么东西。</p></div></div>`}
