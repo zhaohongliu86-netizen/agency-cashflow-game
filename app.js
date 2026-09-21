@@ -481,7 +481,7 @@ function maybeCreateRenewal(p){
    duration,
    margin,
    pitchWeeks:isBig?pick([2,2,3]):0,
-   pitchFee:(isBig&&S.diff==='2016')?pick([2,3,4,5]):0,
+   pitchFee:(isBig&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0,
    freeAllowed:true,
    boost:false,
    renewal:true,
@@ -1315,7 +1315,7 @@ function showYearModal(){
    <h3>年终奖</h3>
    <div class="choices">${[0,1,2,3].map(x=>`<div class="choice" data-bonus="${x}"><b>${x}个月</b><div class="meta">成本 ${fmt(payroll()*x)}</div></div>`).join('')}</div>
    <h3>年会</h3>
-   <div class="choices">${[[0,'不办'],[1,'标准'],[2,'体面']].map(x=>`<div class="choice" data-party="${x[0]}"><b>${x[1]}</b><div class="meta">成本 ${fmt(x[0]===0?0:x[0]===1?S.team.length*.3:S.team.length*.8)}</div></div>`).join('')}</div>
+   <div class="choices">${[[0,'不办'],[1,'标准'],[2,'体面']].map(x=>`<div class="choice" data-party="${x[0]}"><b>${x[1]}</b><div class="meta">成本 ${fmt((x[0]===0?0:x[0]===1?S.team.length*.3:S.team.length*.8)*projectPriceIndex())}</div></div>`).join('')}</div>
    <p id="yearChoice" class="muted">请选择奖金和年会。</p>
    <button class="btn" id="confirmYear" disabled>结算这一年</button>
    <div class="year-close-zone"><span>这一年到这里。还要再开下去吗？</span><button class="btn secondary" id="closeAtYearEnd">关掉公司，直接结算</button></div>
