@@ -132,7 +132,7 @@ function reputationImpactText(){
  const talent=e.talentSkill
    ? `人才池 ${e.talentSkill>0?'+':''}${e.talentSkill}能力 · 薪资×${e.talentPay.toFixed(2)}`
    : '人才市场正常';
- return `${later} · ${talent} · 主动邀约 ${Math.round(inboundChance()*100)}%`;
+ return `${later} · ${talent} · 主动邀约 ${Math.round(inboundChance()*100)}% · 高声望解锁更多客户`;
 }
 let S=null;
 let gossipTimer=null;
@@ -672,6 +672,9 @@ function pitchFreeCostFor(o,freeCount){
 }
 function requestProject(id){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
+ if((o.requiredReputation||0)>S.reputation)return;
+ const maxBoost=maxResourceBoostLevel(o);
+ if((o.resourceBoost||0)>maxBoost)o.resourceBoost=maxBoost;
  const lack=Math.max(0,o.people-available().length);
  if(lack>0){showStaffingChoice(o,lack);return}
  takeProject(id,false);
@@ -1083,7 +1086,7 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
    <div class="pitch-result-project">${name}</div>
    <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:(cost>0?`额外成本 ${fmt(cost)}`:cost<0?`比稿净收入 ${fmt(Math.abs(cost))}`:'没有额外现金损失')}</div>
    <div class="pitch-result-comment">${pitchResultFeedback(won)}</div>
-   ${won?'<div class="pitch-fame-note">赢稿本身不增加声望。项目交付后，按项目声誉值与最终质量结算。</div>':''}
+   ${won?'<div class="pitch-fame-note">赢稿本身不增加声望。项目交付后的最终质量，才决定声望变化。</div>':''}
    <div class="pitch-result-meta">${feeLine}<br><b>最终胜率 ${pWin.toFixed(0)}%</b> · ${capabilityLine}${inboundBonus?` · 主动邀约 +${inboundBonus}%`:''}${boostLine}${streak?` · ${streak}`:''}</div>
    <button class="btn pitch-result-button" id="closePitchResult">${won?'安排执行人力':'认了，继续经营'}</button>
  </div>`;
@@ -1095,7 +1098,7 @@ function maybeLeave(){
  let risk=.42-clamp((S.morale-50)/130,0,.25); if(Math.random()>risk){log('三连败之后团队情绪低，但这次没人辞职。','muted');return}
  const candidates=S.team.filter(p=>p.role!=='老板'); if(!candidates.length)return; const gone=pick(candidates);S.team=S.team.filter(p=>p.id!==gone.id);log(`${gone.name} 提了离职。离职本身不花钱，重新招人才花。`,'bad');
 }
-function boost(id){togglePitchSupport(id)}
+function boost(id){toggleResourceBoost(id)}
 function quarterStatusCopy(){
  if(S.profit>=300)return '账面很绿。现在最危险的是觉得自己不会犯错。';
  if(S.profit>=0)return '还在盈利。下一季度，继续决定钱该花在哪。';
