@@ -17,6 +17,7 @@ const names=['新同事A','新同事B','新同事C','新同事D','新同事E','�
 const roles=['阿康','文案','美术','策略','制片'];
 
 let S=null;
+let gossipTimer=null;
 function start(diff){
  const d=DIFF[diff];
  S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0};
@@ -155,14 +156,40 @@ function refreshGossip(){
  const pool=[...GOSSIP_COMMON,...(GOSSIP_BY_ERA[S.diff]||[])];
  const shuffled=[...pool].sort(()=>Math.random()-.5);
  S.gossip=shuffled.slice(0,8);
+ S.gossipIndex=0;
 }
 function gossipHTML(){
  if(!S.gossip||!S.gossip.length)refreshGossip();
- const items=S.gossip.map(x=>`<span class="gossip-item">${x}</span>`).join('');
+ const index=Number.isFinite(S.gossipIndex)?S.gossipIndex%S.gossip.length:0;
  return `<div class="gossip-strip">
    <div class="gossip-label">圈内小报</div>
-   <div class="gossip-window"><div class="gossip-track">${items}${items}</div></div>
+   <div class="gossip-single" id="gossipSingle">${S.gossip[index]}</div>
  </div>`;
+}
+function gossipReadTime(text){
+ // 中文以完整阅读为主：短消息约3秒，长消息最高约7秒。
+ return clamp(2000+String(text||'').length*110,3000,7000);
+}
+function scheduleGossipRotation(){
+ if(gossipTimer){clearTimeout(gossipTimer);gossipTimer=null}
+ if(!S||!S.gossip||S.gossip.length<2)return;
+ const el=document.getElementById('gossipSingle');
+ if(!el)return;
+ const current=S.gossip[Number.isFinite(S.gossipIndex)?S.gossipIndex%S.gossip.length:0];
+ gossipTimer=setTimeout(()=>{
+   const live=document.getElementById('gossipSingle');
+   if(!live)return;
+   live.classList.add('gossip-fade');
+   setTimeout(()=>{
+     if(!S||!S.gossip||!S.gossip.length)return;
+     S.gossipIndex=((Number.isFinite(S.gossipIndex)?S.gossipIndex:0)+1)%S.gossip.length;
+     const next=document.getElementById('gossipSingle');
+     if(!next)return;
+     next.textContent=S.gossip[S.gossipIndex];
+     next.classList.remove('gossip-fade');
+     scheduleGossipRotation();
+   },220);
+ },gossipReadTime(current));
 }
 
 function makeOpportunity(forced=''){
@@ -817,6 +844,7 @@ function render(){
  <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
  <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div style="margin-top:14px" class="row"><button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button><span class="muted">季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</span></div>
  <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>工龄</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${Number.isFinite(p.tenure)?p.tenure:2}年</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
+ scheduleGossipRotation();
 }
 function durationLabel(weeks){
  if(weeks>=48)return '1年';
