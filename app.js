@@ -68,7 +68,10 @@ const names=['新同事A','新同事B','新同事C','新同事D','新同事E','�
 const roles=['策略','创意','阿康','制片'];
 
 const CAPABILITY_META={
- strategy:{label:'策略力'},creative:{label:'创意力'},service:{label:'服务力'},execution:{label:'资源执行力'}
+ strategy:{label:'策略力',effect:'Pitch判断'},
+ creative:{label:'创意力',effect:'作品声量'},
+ service:{label:'服务力',effect:'续约'},
+ execution:{label:'资源执行力',effect:'复杂交付'}
 };
 const ROLE_AFFINITY={
  老板:{strategy:.70,creative:.90,service:.45,execution:.25},
@@ -1115,6 +1118,7 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
    <div class="pitch-result-project">${name}</div>
    <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:(cost>0?`额外成本 ${fmt(cost)}`:cost<0?`比稿净收入 ${fmt(Math.abs(cost))}`:'没有额外现金损失')}</div>
    <div class="pitch-result-comment">${pitchResultFeedback(won)}</div>
+   ${won?'<div class="pitch-fame-note">赢稿本身不增加声望。项目交付后，才按作品质量与项目体量结算。</div>':''}
    <div class="pitch-result-meta">${feeLine}<br><b>最终胜率 ${pWin.toFixed(0)}%</b> · ${capabilityLine}${inboundBonus?` · 主动邀约 +${inboundBonus}%`:''}${boostLine}${streak?` · ${streak}`:''}</div>
    <button class="btn pitch-result-button" id="closePitchResult">${won?'安排执行人力':'认了，继续经营'}</button>
  </div>`;
@@ -1689,7 +1693,7 @@ function render(){
    </div>
  </div>
  <div class="capability-strip">
-   ${Object.entries(CAPABILITY_META).map(([k,m])=>`<div class="capability"><span>${m.label}</span><b>${caps[k]}</b><i><u style="width:${caps[k]}%"></u></i></div>`).join('')}
+   ${Object.entries(CAPABILITY_META).map(([k,m])=>`<div class="capability"><span>${m.label}</span><b>${caps[k]}</b><small>${m.effect}</small><i><u style="width:${caps[k]}%"></u></i></div>`).join('')}
  </div>
  <div class="stats secondary-stats">
    <div class="stat"><b>${fmt(S.cash)}</b><span>现金</span></div>
