@@ -192,6 +192,21 @@ function scheduleGossipRotation(){
  },gossipReadTime(current));
 }
 
+function requiredPeople(type,value,duration){
+ if(type==='small'){
+   if(value<=15)return 1;
+   if(value<=40)return 2;
+   return 3;
+ }
+ if(type==='retainer'){
+   let n=value<120?3:value<300?4:value<600?5:value<1000?6:value<1600?8:value<2500?10:12;
+   if(duration>=48)n+=1;
+   return clamp(n,3,12);
+ }
+ let n=value<100?3:value<300?4:value<600?5:value<1000?6:value<1800?8:value<3000?10:12;
+ return clamp(n,3,12);
+}
+
 function makeOpportunity(forced=''){
  const d=DIFF[S.diff], cap=unlockCap();
  const r=Math.random();
@@ -203,7 +218,7 @@ function makeOpportunity(forced=''){
  else value=scaleValueTier([50,80,120,200,300,500,800,1200,1800,3000,5000],scaleStep);
  value=Math.round(value*d.deal);
  value=Math.min(value,cap);
- const people=clamp(Math.ceil(Math.log2(Math.max(16,value/12))),2,12);
+ let people=2;
  let duration;
  if(type==='small') duration=pick([4,8,12]);
  else if(type==='retainer') duration=pick([24,36,48,48]);
@@ -211,6 +226,7 @@ function makeOpportunity(forced=''){
  else if(value<300) duration=pick([12,24,24]);
  else if(value<800) duration=pick([24,36,36]);
  else duration=pick([36,48,48]);
+ people=requiredPeople(type,value,duration);
  const margin= type==='retainer'?pick([.22,.28,.33,.38]):type==='small'?pick([.45,.5,.55]):pick([.28,.34,.4,.46]);
  const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch','超级整合Pitch']};
  const pitchWeeks=type==='pitch'?pick([2,2,2,3]):0;
@@ -587,27 +603,6 @@ function quarterStatusCopy(){
  if(S.cash>0)return `已经累计亏损 ${fmt(S.profit)}，但账上还有现金。还能撑，只是每一季都更贵。`;
  return `利润和现金都已经变红。再推进，就是拿未来换时间。`;
 }
-function showLossDecision(onContinue){
- const old=document.getElementById('lossDecisionModal');if(old)old.remove();
- const host=document.createElement('div');
- host.className='overlay loss-decision-overlay';
- host.id='lossDecisionModal';
- host.innerHTML=`<div class="modal loss-decision">
-   <div class="loss-decision-kicker">QUARTERLY REVIEW</div>
-   <div class="big">这家公司还要继续开吗？</div>
-   <div class="loss-decision-number">${fmt(S.profit)}</div>
-   <p>累计利润已经是负数。公司现金还有 <b>${fmt(S.cash)}</b>。</p>
-   <p class="muted">${S.cash>0?'关掉不丢人，继续撑也不是免费的。':'账上已经没什么缓冲了。再撑一季，风险会继续放大。'}</p>
-   <div class="row loss-decision-actions">
-     <button class="btn secondary" id="keepCompany">继续撑</button>
-     <button class="btn warn" id="closeCompany">关掉公司</button>
-   </div>
- </div>`;
- document.body.appendChild(host);
- host.querySelector('#keepCompany').onclick=()=>{host.remove();onContinue()};
- host.querySelector('#closeCompany').onclick=()=>{host.remove();bankrupt()};
-}
-
 function progressQuarter(){
  if(S.ended||document.getElementById('quarterTransition'))return;
  const positive=S.profit>=0;
@@ -659,10 +654,6 @@ function resolveQuarter(){
  };
  render();
  showManpowerDelta(manpowerBefore,manpowerAfter,atYearEnd?'季度结束，人力释放 / 新人到岗':'季度推进，人力释放 / 新人到岗');
- if(S.profit<0){
-   showLossDecision(continueAfterReview);
-   return;
- }
  continueAfterReview();
 }
 function yearEnd(){showYearModal()}
@@ -837,10 +828,68 @@ function hire(){
  render();
  showHireIncentive(1);
 }
-function bankrupt(){S.ended=true;showEnding(true)}
-function endGame(){S.ended=true;showEnding(false)}
-function endingText(bankrupt){
- if(bankrupt)return ['现金流艺术家','你把“无限负债也是一种路线”执行到了最后。银行没被说服。'];
+const PROFIT_BUCKETS=[-1000,-500,-300,-200,-100,-50,0,50,100,200,300,500,800,1200,1800,2500,3500,5000,7500,10000,Infinity];
+const LEADERBOARD_NS='agency-cashflow-game-hongliu-v1';
+
+function profitBucketIndex(p){
+ for(let i=0;i<PROFIT_BUCKETS.length;i++)if(p<PROFIT_BUCKETS[i])return i;
+ return PROFIT_BUCKETS.length-1;
+}
+function benchmarkUrl(action,key,readOnly=false){
+ const base=`https://counterapi.com/api/${LEADERBOARD_NS}/${encodeURIComponent(action)}/${encodeURIComponent(key)}`;
+ return readOnly?`${base}?readOnly=true`:base;
+}
+async function benchmarkRead(action,key){
+ try{
+   const r=await fetch(benchmarkUrl(action,key,true),{cache:'no-store'});
+   if(!r.ok)return 0;
+   const j=await r.json();
+   return Number(j.value)||0;
+ }catch(e){return 0}
+}
+async function benchmarkHit(action,key){
+ try{
+   const r=await fetch(benchmarkUrl(action,key,false),{cache:'no-store'});
+   if(!r.ok)return false;
+   await r.json();
+   return true;
+ }catch(e){return false}
+}
+async function getPeerBenchmark(){
+ const action=`result-${S.diff}`;
+ const bucket=profitBucketIndex(S.profit);
+ const storageKey=`agencyBenchmarkSubmitted-${S.diff}-v1`;
+ let submitted=false;
+ try{submitted=localStorage.getItem(storageKey)==='1'}catch(e){}
+ if(!submitted){
+   const ok=await benchmarkHit(action,`b${bucket}`);
+   if(ok){
+     try{localStorage.setItem(storageKey,'1')}catch(e){}
+   }
+ }
+ const counts=await Promise.all(PROFIT_BUCKETS.map((_,i)=>benchmarkRead(action,`b${i}`)));
+ const total=counts.reduce((a,b)=>a+b,0);
+ if(total<=0)return null;
+ const below=counts.slice(0,bucket).reduce((a,b)=>a+b,0);
+ const here=counts[bucket]||0;
+ const upper=PROFIT_BUCKETS[bucket];
+ const lower=bucket===0?-1500:PROFIT_BUCKETS[bucket-1];
+ let within=.5;
+ if(Number.isFinite(upper)&&Number.isFinite(lower)&&upper>lower){
+   within=clamp((S.profit-lower)/(upper-lower),0,1);
+ }
+ const pct=clamp(Math.round(((below+here*within)/total)*100),0,100);
+ return {pct,total};
+}
+
+function closeCompanyAtYearEnd(){S.ended=true;showEnding('closed')}
+function bankrupt(){S.ended=true;showEnding('bankrupt')}
+function endGame(){S.ended=true;showEnding('complete')}
+function endingText(reason){
+ if(reason==='bankrupt')return ['现金流艺术家','你把“无限负债也是一种路线”执行到了最后。银行没被说服。'];
+ if(reason==='closed')return S.profit<0
+   ? ['及时止损者','年关到了，你决定把门关上。至少亏损没有继续长大。']
+   : ['见好就收','公司还能开，但你决定在这一年结束时收手。'];
  const n=S.team.length,p=S.profit;
  if(n<=14&&p>800)return ['精品店老板','人没怎么长，利润倒长得很快。你相信少开会，多收钱。'];
  if(S.route.retainer>S.route.pitch*1.3)return ['年框地主','别人追热点，你收租。最大的创意，是让客户每年都续。'];
@@ -851,12 +900,43 @@ function endingText(bankrupt){
  return ['正常经营者','你没有把公司做成传奇，也没有做成刑事案件。对广告公司来说，这已经不错。'];
 }
 function showYearModal(){
- const host=document.createElement('div');host.className='overlay';host.id='modal';host.innerHTML=`<div class="modal"><div class="big">第 ${S.year} 年，分钱还是画饼？</div><p class="muted">奖金和年会会影响下一年的士气与离职风险。工资明年自动上涨10%。</p><h3>年终奖</h3><div class="choices">${[0,1,2,3].map(x=>`<div class="choice" data-bonus="${x}"><b>${x}个月</b><div class="meta">成本 ${fmt(payroll()*x)}</div></div>`).join('')}</div><h3>年会</h3><div class="choices">${[[0,'不办'],[1,'标准'],[2,'体面']].map(x=>`<div class="choice" data-party="${x[0]}"><b>${x[1]}</b><div class="meta">成本 ${fmt(x[0]===0?0:x[0]===1?S.team.length*.3:S.team.length*.8)}</div></div>`).join('')}</div><p id="yearChoice" class="muted">请选择奖金和年会。</p><button class="btn" id="confirmYear" disabled>结算这一年</button></div>`;document.body.appendChild(host);
- let b=null,p=null;host.querySelectorAll('[data-bonus]').forEach(el=>el.onclick=()=>{b=+el.dataset.bonus;host.querySelectorAll('[data-bonus]').forEach(x=>x.style.outline='');el.style.outline='2px solid #111';sync()});host.querySelectorAll('[data-party]').forEach(el=>el.onclick=()=>{p=+el.dataset.party;host.querySelectorAll('[data-party]').forEach(x=>x.style.outline='');el.style.outline='2px solid #111';sync()});function sync(){const btn=host.querySelector('#confirmYear');btn.disabled=b===null||p===null;if(!btn.disabled)btn.onclick=()=>{host.remove();closeYear(b,p)}}
+ const host=document.createElement('div');host.className='overlay';host.id='modal';
+ host.innerHTML=`<div class="modal">
+   <div class="big">第 ${S.year} 年，分钱还是画饼？</div>
+   <p class="muted">奖金和年会会影响下一年的士气与离职风险。工资明年自动上涨10%。</p>
+   <h3>年终奖</h3>
+   <div class="choices">${[0,1,2,3].map(x=>`<div class="choice" data-bonus="${x}"><b>${x}个月</b><div class="meta">成本 ${fmt(payroll()*x)}</div></div>`).join('')}</div>
+   <h3>年会</h3>
+   <div class="choices">${[[0,'不办'],[1,'标准'],[2,'体面']].map(x=>`<div class="choice" data-party="${x[0]}"><b>${x[1]}</b><div class="meta">成本 ${fmt(x[0]===0?0:x[0]===1?S.team.length*.3:S.team.length*.8)}</div></div>`).join('')}</div>
+   <p id="yearChoice" class="muted">请选择奖金和年会。</p>
+   <button class="btn" id="confirmYear" disabled>结算这一年</button>
+   <div class="year-close-zone"><span>这一年到这里。还要再开下去吗？</span><button class="btn secondary" id="closeAtYearEnd">关掉公司，直接结算</button></div>
+ </div>`;
+ document.body.appendChild(host);
+ let b=null,p=null;
+ host.querySelectorAll('[data-bonus]').forEach(el=>el.onclick=()=>{b=+el.dataset.bonus;host.querySelectorAll('[data-bonus]').forEach(x=>x.style.outline='');el.style.outline='2px solid #111';sync()});
+ host.querySelectorAll('[data-party]').forEach(el=>el.onclick=()=>{p=+el.dataset.party;host.querySelectorAll('[data-party]').forEach(x=>x.style.outline='');el.style.outline='2px solid #111';sync()});
+ function sync(){const btn=host.querySelector('#confirmYear');btn.disabled=b===null||p===null;if(!btn.disabled)btn.onclick=()=>{host.remove();closeYear(b,p)}}
+ host.querySelector('#closeAtYearEnd').onclick=()=>{host.remove();closeCompanyAtYearEnd()};
 }
-function showEnding(bankrupt){
- const [title,desc]=endingText(bankrupt),roi=S.revenue?S.profit/S.revenue*100:0;const host=document.createElement('div');host.className='overlay';host.innerHTML=`<div class="modal ending"><div class="big">${title}</div><p>${desc}</p><p>三年收入：<b>${fmt(S.revenue)}</b><br>最终累计利润：<b>${fmt(S.profit)}</b><br>最终现金：<b>${fmt(S.cash)}</b><br>团队规模：<b>${S.team.length}人</b><br>Pitch：<b>${S.wins}赢 / ${S.losses}输</b><br>利润率：<b>${roi.toFixed(1)}%</b></p><button class="btn" onclick="location.reload()">换一种活法，再来一局</button></div>`;document.body.appendChild(host)
+function showEnding(reason){
+ const [title,desc]=endingText(reason),roi=S.revenue?S.profit/S.revenue*100:0;
+ const host=document.createElement('div');host.className='overlay';
+ host.innerHTML=`<div class="modal ending">
+   <div class="big">${title}</div>
+   <p>${desc}</p>
+   <div class="peer-benchmark" id="peerBenchmark"><span>同行战绩</span><b>正在读取实际玩家样本…</b></div>
+   <p>累计收入：<b>${fmt(S.revenue)}</b><br>最终累计利润：<b>${fmt(S.profit)}</b><br>最终现金：<b>${fmt(S.cash)}</b><br>团队规模：<b>${S.team.length}人</b><br>Pitch：<b>${S.wins}赢 / ${S.losses}输</b><br>利润率：<b>${roi.toFixed(1)}%</b></p>
+   <button class="btn" onclick="location.reload()">换一种活法，再来一局</button>
+ </div>`;
+ document.body.appendChild(host);
+ getPeerBenchmark().then(r=>{
+   const el=document.getElementById('peerBenchmark');if(!el)return;
+   if(!r){el.innerHTML='<span>同行战绩</span><b>实际玩家样本暂时读取失败</b>';return}
+   el.innerHTML=`<span>同行战绩 · ${S.diff}</span><b>打败了 ${r.pct}% 的同行</b><small>基于 ${r.total} 位实际完成玩家的匿名成绩</small>`;
+ });
 }
+
 function render(){
  const app=document.getElementById('app');if(!S){app.innerHTML=startHTML();return}
  const avail=available().length;
