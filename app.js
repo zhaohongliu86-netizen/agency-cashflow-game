@@ -8,6 +8,15 @@ const DIFF={
   2016:{name:'2016',label:'最容易',desc:'预算更宽松，机会更多，行业还相信增长。',tax:.25,deal:1.18,baseWin:5,opp:5,startCash:160},
   2026:{name:'2026',label:'最难',desc:'钱少、要求多、Pitch多，客户也会问AI能不能先来一版。',tax:.25,deal:.86,baseWin:-5,opp:3,startCash:100}
 };
+const CURRENT_RULES={tax:.25,deal:1,baseWin:0,opp:4};
+const START_SCALES={
+ boutique6:{key:'boutique6',name:'6人创意小店',size:6,startCash:90,startRep:30,startMorale:72,opp:3,mixShift:[.15,.25],desc:'人少、现金压力低。更容易吃小单和创意型Pitch，靠作品与效率长大。',counts:{策略:1,阿康:1,文案:1,美术:1,制片:1}},
+ growth20:{key:'growth20',name:'20人成长型Agency',size:20,startCash:260,startRep:45,startMorale:68,opp:4,mixShift:[0,.08],desc:'标准经营盘。已经能摸中型客户，但每次扩张都会明显增加固定成本。',counts:{策略:2,阿康:5,文案:4,美术:4,制片:4}},
+ integrated40:{key:'integrated40',name:'40人中型综合Agency',size:40,startCash:620,startRep:58,startMorale:64,opp:5,mixShift:[-.08,-.02],desc:'开局就背着大团队和大客户。业务更大，工资也更像一堵墙。',counts:{策略:4,阿康:11,文案:9,美术:8,制片:7}}
+};
+function startScale(key=S?.scale){return START_SCALES[key]||START_SCALES.growth20}
+function gameRules(){return S?.scale?{...CURRENT_RULES,opp:startScale().opp}:(DIFF[S?.diff]||CURRENT_RULES)}
+
 
 // 每8年换一轮行业气候。30年模式会经历前四段；后两段保留给未来继续扩年限。
 const ECON_PHASES=[
@@ -61,6 +70,78 @@ const baseTeam=[
 
 const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
 const roles=['阿康','文案','美术','策略','制片'];
+
+const CAPABILITY_META={
+ strategy:{label:'策略力'},creative:{label:'创意力'},service:{label:'服务力'},execution:{label:'资源执行力'}
+};
+const ROLE_AFFINITY={
+ 老板:{strategy:.70,creative:.90,service:.45,execution:.25},
+ 策略:{strategy:1,creative:.25,service:.15,execution:.10},
+ 阿康:{strategy:.20,creative:.10,service:1,execution:.30},
+ 文案:{strategy:.20,creative:1,service:.10,execution:.10},
+ 美术:{strategy:.10,creative:1,service:.10,execution:.25},
+ 制片:{strategy:.10,creative:.10,service:.25,execution:1}
+};
+const CAPABILITY_TARGET={strategy:.40,creative:.36,service:.32,execution:.28};
+function baseRole(role=''){
+ if(role==='老板')return '老板';
+ if(role.includes('策略'))return '策略';
+ if(role.includes('客户')||role.includes('阿康'))return '阿康';
+ if(role.includes('文案'))return '文案';
+ if(role.includes('美术'))return '美术';
+ if(role.includes('制片')||role.includes('制作'))return '制片';
+ return '阿康';
+}
+function roleTitle(role,skill){
+ if(role==='策略')return skill>=84?'策略总监':'策略';
+ if(role==='阿康')return skill>=84?'客户总监':'阿康';
+ if(role==='文案')return skill>=84?'文案总监':'文案';
+ if(role==='美术')return skill>=84?'美术总监':'美术';
+ if(role==='制片')return skill>=84?'资深制片':'制片';
+ return role;
+}
+function roleSpec(role){return role==='文案'||role==='美术'?'创意':role==='策略'?'品牌':role==='阿康'?'客户':'制作'}
+function starterSkill(scaleKey,role,index){
+ const base={策略:73,阿康:70,文案:73,美术:73,制片:71}[role]||72;
+ const bias=scaleKey==='boutique6'?4:scaleKey==='growth20'?1:-1;
+ const senior=index===0?(scaleKey==='boutique6'?5:10):(index>0&&index%6===0?6:0);
+ return clamp(base+bias+senior-(index%4)*2,65,90);
+}
+function salaryFor(role,skill){
+ const seniorPremium=skill>=84?0.45:0;
+ return +((0.9+(skill-60)*0.055+(role==='策略'?0.35:role==='制片'?0.15:0)+seniorPremium)*salaryMarketIndex()).toFixed(1);
+}
+function buildStarterTeam(scaleKey){
+ const profile=START_SCALES[scaleKey]||START_SCALES.growth20;
+ const team=[{id:uid(),name:'老板',role:'老板',spec:'创意',salary:+(3*salaryMarketIndex()).toFixed(1),skill:88,slots:[],tenure:2}];
+ for(const [role,count] of Object.entries(profile.counts)){
+   for(let i=0;i<count;i++){
+     const skill=starterSkill(scaleKey,role,i),label=role==='阿康'?'客户':role;
+     team.push({id:uid(),name:`${label}${i+1}`,role:roleTitle(role,skill),spec:roleSpec(role),salary:salaryFor(role,skill),skill,slots:[],tenure:2});
+   }
+ }
+ return team;
+}
+function companyCapabilities(team=S?.team||[]){
+ const result={},size=Math.max(1,team.length);
+ for(const key of Object.keys(CAPABILITY_META)){
+   let sumW=0,sumSkill=0;
+   for(const p of team){
+     const w=(ROLE_AFFINITY[baseRole(p.role)]||ROLE_AFFINITY.阿康)[key]||0;
+     sumW+=w;sumSkill+=(Number(p.skill)||65)*w;
+   }
+   const avg=sumW?sumSkill/sumW:60;
+   const coverage=clamp(sumW/(size*CAPABILITY_TARGET[key]),0,1.15);
+   result[key]=clamp(Math.round(35+(avg-60)*1.25+coverage*18),35,98);
+ }
+ return result;
+}
+function capabilityDelta(candidate){
+ const before=companyCapabilities(),after=companyCapabilities([...(S?.team||[]),candidate]),delta={};
+ for(const k of Object.keys(CAPABILITY_META))delta[k]=after[k]-before[k];
+ return delta;
+}
+
 
 let S=null;
 let gossipTimer=null;
