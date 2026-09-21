@@ -419,6 +419,30 @@ function showPitchSuspense(o,onDone){
  setTimeout(()=>{host.remove();onDone()},total);
 }
 
+function pitchResultFeedback(won){
+ const winCopy=[
+   '客户说方向很清楚。翻译成人话：这次真选你。',
+   '群里突然开始讨论执行细节。好消息，这通常意味着你赢了。',
+   '提案结束时没人鼓掌。第二天合同来了。',
+   '客户终于不说“我们内部再看看”了。',
+   '这次不是陪跑。会议室里的空气都贵了一点。',
+   '大老板点了头。前面那些改到凌晨的页，突然都有了名字。',
+   '客户开始问什么时候能开工。比一句“不错”值钱多了。',
+   '竞品还在等反馈，你已经开始排执行人力。'
+ ];
+ const loseCopy=[
+   '客户说两个方向都很好。通常这句话后面就没你了。',
+   '谢谢参与。四个字，足够让几十页PPT瞬间失重。',
+   '客户说不是创意的问题。至于是什么问题，没有人知道。',
+   '方案留在了客户电脑里，项目没有留在公司里。',
+   '群里最后一句是“辛苦大家”。没有然后了。',
+   '客户选择了另一家。你的PPT获得了完整阅读，但没有收入。',
+   '大老板觉得都不错，然后选了别人。',
+   '这次陪跑结束。至少内部员工的工资本来就要发。'
+ ];
+ return pick(won?winCopy:loseCopy);
+}
+
 function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0,boost=0,afterClose=null}){
  const old=document.getElementById('pitchResultModal'); if(old)old.remove();
 
@@ -451,6 +475,7 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
    <div class="pitch-result-title">${won?'赢稿！':'丢稿。'}</div>
    <div class="pitch-result-project">${name}</div>
    <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:(cost>0?`额外成本 ${fmt(cost)}`:cost<0?`比稿净收入 ${fmt(Math.abs(cost))}`:'没有额外现金损失')}</div>
+   <div class="pitch-result-comment">${pitchResultFeedback(won)}</div>
    <div class="pitch-result-meta">${feeLine}<br>当时胜率约 ${pWin.toFixed(0)}%${boostLine}${streak?` · ${streak}`:''}</div>
    <button class="btn pitch-result-button" id="closePitchResult">${won?'安排执行人力':'认了，继续经营'}</button>
  </div>`;
@@ -513,13 +538,92 @@ function resolveQuarter(){
  showManpowerDelta(manpowerBefore,manpowerAfter,'季度推进，人力释放 / 新人到岗');
 }
 function yearEnd(){showYearModal()}
+function yearEndFeedback(bonus,party){
+ if(bonus===0&&party===0)return pick([
+   '钱没发，饭也没吃。团队开始认真研究招聘软件。',
+   '这一年，公司省下了钱，也省掉了一部分感情。',
+   '老板成功守住现金流。员工成功记住了这件事。'
+ ]);
+ if(bonus===0&&party>0)return pick([
+   '年会办得挺热闹。散场之后，大家还是会问：奖金呢？',
+   '有酒有菜，没有奖金。朋友圈有照片，工资卡没有惊喜。',
+   '团队吃得不错，但没人会把年会抽奖当成年终奖。'
+ ]);
+ if(bonus===1&&party===0)return pick([
+   '一个月奖金到账，年会省了。大家接受这是一个务实的冬天。',
+   '钱比节目单有用。团队没有聚餐，但至少账户里有一点年味。',
+   '不办年会，直接发钱。有人会觉得你冷静，也有人会觉得你懂事。'
+ ]);
+ if(bonus>=2&&party===0)return pick([
+   '年会没办，但奖金够厚。没人要求老板一定会唱歌。',
+   '没有舞台，没有抽奖，钱直接到账。团队情绪相当稳定。',
+   '你取消了年会，但把预算放进奖金里。这个解释很好懂。'
+ ]);
+ if(bonus===1&&party>0)return pick([
+   '有奖金，也有一顿饭。称不上豪横，但至少不像画饼。',
+   '这一年正常收尾。大家吃完饭，第二天还能继续做稿。',
+   '钱和仪式都有一点。团队没有沸腾，也没有冷掉。'
+ ]);
+ if(bonus===2&&party===1)return pick([
+   '两个月奖金，加一场正常年会。团队开始觉得公司今年确实赚到钱了。',
+   '奖金有分量，年会不过度。财务肉疼，团队心情不错。',
+   '大家吃完饭开始讨论明年，而不是讨论要不要更新简历。'
+ ]);
+ if(bonus===2&&party===2)return pick([
+   '两个月奖金，年会也办得体面。公司文化突然有了预算。',
+   '这一晚看起来像一家发展不错的公司。前提是明年别突然裁员。',
+   '钱发了，场面也有了。团队士气明显比PPT里的价值观可靠。'
+ ]);
+ if(bonus>=3&&party===1)return pick([
+   '三个月奖金到账。年会已经不重要了，但大家还是去了。',
+   '奖金足够有说服力。老板上台讲话时，台下真的有人在听。',
+   '这一年结束得很漂亮。代价也真实地写在现金流里。'
+ ]);
+ return pick([
+   '三个月奖金，年会也拉满。今晚没人聊离职，财务除外。',
+   '公司把“辛苦大家”翻译成了现金和一顿好饭。',
+   '这一年收尾很体面。团队士气高涨，账户余额负责保持冷静。'
+ ]);
+}
+function showYearFeedback({bonus,party,bonusCost,partyCost,tax,feedback,onContinue}){
+ const host=document.createElement('div');
+ host.className='overlay';
+ host.id='yearFeedbackModal';
+ const partyName=party===0?'不办年会':party===1?'标准年会':'体面年会';
+ host.innerHTML=`<div class="modal year-feedback">
+   <div class="year-feedback-kicker">YEAR END</div>
+   <div class="big">这一年，团队记住了什么</div>
+   <div class="year-feedback-copy">${feedback}</div>
+   <div class="year-feedback-numbers">
+     <span>年终奖 <b>${bonus}个月 · ${fmt(bonusCost)}</b></span>
+     <span>${partyName} <b>${fmt(partyCost)}</b></span>
+     <span>纳税 <b>${fmt(tax)}</b></span>
+   </div>
+   <button class="btn" id="continueAfterYear">${S.year>=3?'看三年结算':'进入下一年 →'}</button>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#continueAfterYear').onclick=()=>{host.remove();onContinue()};
+}
 function closeYear(bonus,party){
- const bonusCost=payroll()*bonus; const partyCost=party===0?0:party===1?S.team.length*.3:S.team.length*.8;
- S.cash-=bonusCost+partyCost; S.profit-=bonusCost+partyCost; S.morale=clamp(S.morale + (bonus===0?-5:bonus===1?0:bonus===2?4:6)+(party===0?0:party===1?2:4),0,100);
- const tax=Math.max(0,S.taxable)*DIFF[S.diff].tax;S.cash-=tax;S.profit-=tax;log(`年末：奖金 ${bonus} 个月，年会 ${party===0?'不办':party===1?'标准':'体面'}，纳税 ${fmt(tax)}。`,'muted');
- S.team.forEach(p=>{p.salary*=1.10;p.tenure=(Number.isFinite(p.tenure)?p.tenure:2)+1}); S.taxable=0;S.yearSpend=0;
- if(S.year>=3){endGame();return}
- S.year++;S.quarter=1;S.week+=12;genOpp();render();
+ const bonusCost=payroll()*bonus;
+ const partyCost=party===0?0:party===1?S.team.length*.3:S.team.length*.8;
+ S.cash-=bonusCost+partyCost;
+ S.profit-=bonusCost+partyCost;
+ S.morale=clamp(S.morale + (bonus===0?-5:bonus===1?0:bonus===2?4:6)+(party===0?0:party===1?2:4),0,100);
+ const tax=Math.max(0,S.taxable)*DIFF[S.diff].tax;
+ S.cash-=tax;S.profit-=tax;
+ const feedback=yearEndFeedback(bonus,party);
+ log(`年末：奖金 ${bonus} 个月，年会 ${party===0?'不办':party===1?'标准':'体面'}，纳税 ${fmt(tax)}。`,'muted');
+ log(feedback,bonus===0?'bad':'good');
+ S.team.forEach(p=>{p.salary*=1.10;p.tenure=(Number.isFinite(p.tenure)?p.tenure:2)+1});
+ S.taxable=0;S.yearSpend=0;
+ showYearFeedback({
+   bonus,party,bonusCost,partyCost,tax,feedback,
+   onContinue:()=>{
+     if(S.year>=3){endGame();return}
+     S.year++;S.quarter=1;S.week+=12;genOpp();render();
+   }
+ });
 }
 function severanceMonths(p){
  const tenure=Number.isFinite(p.tenure)?p.tenure:2;
