@@ -526,10 +526,19 @@ function resourceBoostPeople(o){
  return clamp(Math.round(Number(o?.resourceBoost)||0),0,2)*resourceBoostUnit();
 }
 function resourceBoostWinBonus(o){
- return clamp(Math.round(Number(o?.resourceBoost)||0),0,2)*6;
+ const level=clamp(Math.round(Number(o?.resourceBoost)||0),0,2);
+ return level===1?8:level===2?16:0;
 }
 function resourceBoostQualityBonus(o){
- return clamp(Math.round(Number(o?.resourceBoost)||0),0,2)*5;
+ const level=clamp(Math.round(Number(o?.resourceBoost)||0),0,2);
+ return level===1?6:level===2?12:0;
+}
+function resourceBoostMarginPenalty(o){
+ const level=clamp(Math.round(Number(o?.resourceBoost)||0),0,2);
+ return level===1?.05:level===2?.12:0;
+}
+function resourceBoostMargin(o){
+ return Math.max(.08,+((Number(o?.margin)||0)-resourceBoostMarginPenalty(o)).toFixed(2));
 }
 function maxResourceBoostLevel(o){
  const unit=resourceBoostUnit();
@@ -792,9 +801,10 @@ function startDirectExecution(o,selected,boostSelected,freeCount,freeCost,teamSc
    log(`执行期用了 ${freeCount} 个 Free，成本 ${fmt(freeCost)}。`,'muted');
  }
  if(boostSelected.length){
-   log(`资源加码：${o.name} 额外投入 ${boostSelected.length} 名正式员工，项目质量预期 +${qualityBonus}。`,'good');
+   log(`资源加码：${o.name} 额外投入 ${boostSelected.length} 名正式员工，质量 +${qualityBonus}，项目毛利率降至 ${Math.round(resourceBoostMargin(o)*100)}%。`,'good');
  }
- S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people+boostSelected.length,quality,resourceBoost:o.resourceBoost||0,boostPeople:boostSelected.length,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
+ const finalMargin=resourceBoostMargin(o);
+ S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:finalMargin,weeks:o.duration,left:o.duration,people:o.people+boostSelected.length,quality,resourceBoost:o.resourceBoost||0,boostPeople:boostSelected.length,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
  trackProject(o);
  log(`接下：${o.name}，案值 ${fmt(o.value)}。`,'good');
  S.opp=S.opp.filter(x=>x.id!==o.id);
@@ -823,9 +833,10 @@ function finalizePitchExecution(o,selected,boostSelected,freeCount,mode,teamScor
  const qualityBonus=resourceBoostQualityBonus(o);
  const quality=clamp(teamScore+qualityBonus+moraleQualityModifier()+Math.random()*14-7-qualityPenalty,42,98);
  if(boostSelected.length){
-   log(`资源加码继续进入执行：额外 ${boostSelected.length} 人，项目质量预期 +${qualityBonus}。`,'good');
+   log(`资源加码继续进入执行：额外 ${boostSelected.length} 人，质量 +${qualityBonus}，项目毛利率降至 ${Math.round(resourceBoostMargin(o)*100)}%。`,'good');
  }
- S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people+boostSelected.length,quality,resourceBoost:o.resourceBoost||0,boostPeople:boostSelected.length,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
+ const finalMargin=resourceBoostMargin(o);
+ S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:finalMargin,weeks:o.duration,left:o.duration,people:o.people+boostSelected.length,quality,resourceBoost:o.resourceBoost||0,boostPeople:boostSelected.length,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
  trackProject(o);
  const manpowerAfter=totalFreeSlots();
  render();
@@ -843,8 +854,9 @@ function maybeShowBudgetShrink(o,onContinue){
  S.lastBudgetShrinkYear=S.year;
  const oldValue=o.value;
  const newValue=Math.max(1,Math.round(oldValue*.5));
- const oldGross=oldValue*o.margin;
- const newGross=newValue*o.margin;
+ const effectiveMargin=resourceBoostMargin(o);
+ const oldGross=oldValue*effectiveMargin;
+ const newGross=newValue*effectiveMargin;
  const phase=economyPhase();
  const host=document.createElement('div');
  host.className='overlay budget-cut-overlay';
@@ -858,7 +870,7 @@ function maybeShowBudgetShrink(o,onContinue){
      <strong>→</strong>
      <span>现在只剩 <b>${fmt(newValue)}</b></span>
    </div>
-   <p class="muted">毛利率不变，但预计项目毛利从 <b>${fmt(oldGross)}</b> 降到 <b>${fmt(newGross)}</b>。人力需求和周期不自动减半。</p>
+   <p class="muted">当前投入方式下毛利率约 <b>${Math.round(effectiveMargin*100)}%</b>，预计项目毛利从 <b>${fmt(oldGross)}</b> 降到 <b>${fmt(newGross)}</b>。人力需求和周期不自动减半。</p>
    <div class="row budget-cut-actions">
      <button class="btn" id="acceptBudgetCut">继续做缩水版</button>
      <button class="btn secondary" id="rejectBudgetCut">算了，不接</button>
