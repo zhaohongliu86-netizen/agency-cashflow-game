@@ -69,7 +69,7 @@ const baseTeam=[
 ].map((x,i)=>({id:`p${i}`,name:x[0],role:x[1],spec:x[2],salary:x[3],skill:x[4],slots:[],tenure:2}));
 
 const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
-const roles=['阿康','文案','美术','策略','制片'];
+const roles=['策略','文案','美术','阿康','制片'];
 
 const CAPABILITY_META={
  strategy:{label:'策略力'},creative:{label:'创意力'},service:{label:'服务力'},execution:{label:'资源执行力'}
@@ -657,7 +657,9 @@ function makeOpportunity(forced=''){
 }
 function renewalChance(morale){
  let base=morale<75?0:morale<85?.25:morale<95?.45:.65;
- return clamp(base+economyPhase().renewal,0,.75);
+ const service=companyCapabilities().service;
+ const serviceBonus=clamp((service-70)*.008,-.08,.14);
+ return clamp(base+economyPhase().renewal+serviceBonus,0,.78);
 }
 function maybeCreateRenewal(p){
  if(!p||p.type!=='retainer')return;
@@ -720,15 +722,15 @@ function requestProject(id){
 }
 function createHireCandidate(requestedRole=''){
  const role=requestedRole||pick(roles);
- const skill=Math.round(64+Math.random()*25);
+ const skill=Math.round(68+Math.random()*23);
  const salary=salaryFor(role,skill);
  return {id:uid(),name:pick(names),role:roleTitle(role,skill),spec:roleSpec(role),salary,skill,slots:[],tenure:0};
 }
 function candidateImpactHTML(person){
  const delta=capabilityDelta(person);
- const gains=Object.entries(delta).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
- if(!gains.length)return '<span>组织更完整，但四维暂时无明显上升</span>';
- return gains.slice(0,2).map(([k,v])=>`<span>${CAPABILITY_META[k].label} <b>+${v}</b></span>`).join('');
+ const changes=Object.entries(delta).filter(([,v])=>v!==0).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+ if(!changes.length)return '<span>四维基本不变，主要增加人力容量</span>';
+ return changes.slice(0,3).map(([k,v])=>`<span class="${v<0?'impact-down':''}">${CAPABILITY_META[k].label} <b>${v>0?'+':''}${v}</b></span>`).join('');
 }
 function commitHire(person,host=null){
  const before=S.team.length,fee=person.salary*.5;
@@ -745,7 +747,7 @@ function hire(){
  const host=document.createElement('div');host.className='overlay';host.id='hireModal';
  host.innerHTML=`<div class="modal hire-modal">
    <div class="big">这次想补哪种能力？</div>
-   <p class="muted">招聘不再只是“多一个人”。不同岗位会改变公司的策略力、创意力、服务力与资源执行力。</p>
+   <p class="muted">招聘不再只是“多一个人”。不同岗位会改变四维能力；小团队扩张时，普通新人也可能暂时稀释原来的能力密度。</p>
    <div class="hire-candidates">
      ${candidates.map((p,i)=>`<div class="hire-card">
        <div class="hire-role">${p.role}</div>
