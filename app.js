@@ -318,12 +318,12 @@ function trackProject(o){
 
 function projectReputationDelta(p){
  const q=Number(p.quality)||0;
- if(q>=94)return 4;
- if(q>=90)return 3;
- if(q>=86)return 2;
- if(q>=82)return 1;
- if(q<52)return -3;
- if(q<60)return -1;
+ if(q>=96)return 4;
+ if(q>=93)return 3;
+ if(q>=90)return 2;
+ if(q>=87)return 1;
+ if(q<55)return -2;
+ if(q<62)return -1;
  return 0;
 }
 function applyProjectReputation(p){
