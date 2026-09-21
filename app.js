@@ -391,7 +391,7 @@ function showPitchSuspense(o,onDone){
  const pool=[...common,...(byEra[S.diff]||[])];
  const first=pick(pool);
  let second=pick(pool.filter(x=>x!==first));
- const total=o.value>=1000?2500:o.value>=500?2200:o.value>=200?1900:1600;
+ const total=o.value>=1000?3200:o.value>=500?2900:o.value>=200?2600:2400;
  const switchAt=Math.round(total*.48);
  const host=document.createElement('div');
  host.className='overlay pitch-suspense-overlay';
