@@ -1715,7 +1715,6 @@ function render(){
  <div class="grid"><main class="panel"><h2>${isAnnualMode()?'这一年，生意自己不会长出来':'这季度，生意自己不会长出来'}</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">'+emptyOpportunityCopy+'</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
    <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">${isAnnualMode()?'推进这一年 →':'推进一季度 →'}</button>
    <div class="quarter-action-copy">
-     <div class="quarter-profit-line">当前累计利润 <b>${fmt(S.profit)}</b></div>
      <div class="quarter-status-copy">${quarterStatusCopy()}</div>
      <small>${isAnnualMode()?'年度':'季度'}工资约 ${fmt(payroll()*(isAnnualMode()?12:3))} · 当前名义大单上限 ${fmt(unlockCap())}</small>
    </div>
