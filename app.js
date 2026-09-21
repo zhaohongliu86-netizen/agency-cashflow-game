@@ -15,7 +15,7 @@ const START_SCALES={
  integrated40:{key:'integrated40',name:'40人中型综合Agency',size:40,startCash:620,startRep:58,startMorale:64,opp:5,mixShift:[-.08,-.02],desc:'开局就背着大团队和大客户。业务更大，工资也更像一堵墙。',counts:{策略:4,阿康:11,文案:9,美术:8,制片:7}}
 };
 function startScale(key=S?.scale){return START_SCALES[key]||START_SCALES.growth20}
-function gameRules(){return S?.scale?{...CURRENT_RULES,opp:startScale().opp}:(DIFF[S?.diff]||CURRENT_RULES)}
+function gameRules(){return DIFF[S?.diff]||DIFF[2026]}
 
 
 // 每8年换一轮行业气候。30年模式会经历前四段；后两段保留给未来继续扩年限。
@@ -117,6 +117,43 @@ function starterSkill(scaleKey,role,index){
 function salaryFor(role,skill){
  const seniorPremium=skill>=84?0.45:0;
  return +((0.9+(skill-60)*0.055+(role==='策略'?0.35:role==='制片'?0.15:role==='创意'?0.12:0)+seniorPremium)*salaryMarketIndex()).toFixed(1);
+}
+
+function buildStandardStarterTeam(){
+ const defs=[
+   ['老板','老板','创意',3.0,88],
+   ['策略','策略','品牌',2.5,82],
+   ['客户1','客户经理','客户',1.2,68],
+   ['客户2','客户经理','客户',1.5,72],
+   ['客户总监','客户总监','客户',3.0,84],
+   ['创意1','创意','创意',1.1,70],
+   ['创意总监','创意总监','创意',3.0,86],
+   ['美术1','美术','创意',1.2,73],
+   ['美术总监','美术总监','创意',3.0,87],
+   ['制片','制片','制作',2.0,80]
+ ];
+ return defs.map(x=>({id:uid(),name:x[0],role:x[1],spec:x[2],salary:+(x[3]*salaryMarketIndex()).toFixed(1),skill:x[4],slots:[],tenure:2}));
+}
+function openingProjectsForEra(diff){
+ const defs={
+   '2006':[
+     ['老客户 · 年度品牌服务','retainer',110,.36,36,4,76,'mixed'],
+     ['老客户 · 电视广告项目','small',45,.50,12,2,78,'prestige']
+   ],
+   '2016':[
+     ['老客户 · 年度整合传播','retainer',150,.37,36,4,78,'mixed'],
+     ['老客户 · 社交内容项目','small',60,.52,12,2,80,'prestige']
+   ],
+   '2026':[
+     ['老客户 · 品牌年度服务','retainer',80,.30,36,4,74,'delivery'],
+     ['老客户 · 内容快单','small',30,.46,12,2,76,'mixed']
+   ]
+ };
+ return (defs[String(diff)]||defs['2026']).map(x=>{
+   const o={id:uid(),name:x[0],type:x[1],value:x[2],margin:x[3],weeks:x[4],left:x[4],people:x[5],quality:x[6],flavor:x[7],legacy:true};
+   o.reputationValue=calculateProjectReputationValue(o);
+   return o;
+ });
 }
 function buildStarterTeam(scaleKey){
  const profile=START_SCALES[scaleKey]||START_SCALES.growth20;
@@ -292,13 +329,13 @@ function showSaveToast(title,copy,bad=false){
  setTimeout(()=>host.classList.add('result-leave'),1600);
  setTimeout(()=>host.remove(),2100);
 }
-function start(scaleKey){
- const profile=START_SCALES[scaleKey]||START_SCALES.growth20;
- const team=buildStarterTeam(profile.key);
- S={diff:'2026',scale:profile.key,year:1,quarter:1,week:1,cash:profile.startCash,profit:0,revenue:0,taxable:0,reputation:profile.startRep,morale:profile.startMorale,team,opp:[],active:openingProjects(profile.key),log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:team.length,projects:0,inboundOffers:0}};
+function start(diff){
+ const rules=DIFF[diff]||DIFF[2026];
+ const team=buildStandardStarterTeam();
+ S={diff:String(rules.name),year:1,quarter:1,week:1,cash:rules.startCash,profit:0,revenue:0,taxable:0,reputation:45,morale:70,team,opp:[],active:openingProjectsForEra(rules.name),log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:team.length,projects:0,inboundOffers:0}};
  allocateLegacy();
  genOpp();
- log(`接手 ${profile.name}。利润和声望是两条路，四项能力决定你更擅长哪种生意。`,'');
+ log(`从 ${rules.name} 年开局。利润和声望是两条独立的经营结果。`,'');
  render();
  saveGame(false);
 }
@@ -1716,10 +1753,10 @@ async function benchmarkHit(action,key){
  }catch(e){return false}
 }
 async function getPeerBenchmark(){
- const cohort=S.scale||S.diff;
+ const cohort=S.diff;
  const action=`result-${cohort}-y${S.year}`;
  const bucket=profitBucketIndex(S.profit);
- const storageKey=`agencyBenchmarkSubmitted-${cohort}-y${S.year}-v3`;
+ const storageKey=`agencyBenchmarkSubmitted-${cohort}-y${S.year}-v4`;
  let submitted=false;
  try{submitted=localStorage.getItem(storageKey)==='1'}catch(e){}
  if(!submitted){
@@ -1788,7 +1825,7 @@ function showEnding(reason){
  host.innerHTML=`<div class="modal ending">
    <div class="big">${title}</div>
    <p>${desc}</p>
-   <div class="ending-dual"><div><span>经营成绩</span><b>${fmt(S.profit)}</b><small>累计利润</small></div><div><span>行业位置</span><b>${S.reputation}分</b><small>${reputationLabel()} · ${agencyType()}</small></div></div>
+   <div class="ending-dual"><div><span>经营成绩</span><b>${fmt(S.profit)}</b><small>累计利润</small></div><div><span>行业位置</span><b>${S.reputation}分</b><small>${reputationLabel()} · ${S.diff}年代开局</small></div></div>
    <div class="peer-benchmark" id="peerBenchmark"><span>利润同行战绩</span><b>正在读取实际玩家样本…</b></div>
    <div class="personal-records">
      <div><span>最大单</span><b>${fmt(S.records?.maxDeal||0)}</b></div>
@@ -1805,7 +1842,7 @@ function showEnding(reason){
  getPeerBenchmark().then(r=>{
    const el=document.getElementById('peerBenchmark');if(!el)return;
    if(!r){el.innerHTML='<span>同行战绩</span><b>实际玩家样本暂时读取失败</b>';return}
-   el.innerHTML=`<span>利润同行战绩 · ${startScale().name} · ${S.year}年</span><b>利润打败了 ${r.pct}% 的同规模玩家</b><small>基于 ${r.total} 位相同经营年数的实际玩家匿名成绩</small>`;
+   el.innerHTML=`<span>利润同行战绩 · ${S.diff} · ${S.year}年</span><b>利润打败了 ${r.pct}% 的同年代玩家</b><small>基于 ${r.total} 位相同经营年数的实际玩家匿名成绩</small>`;
  });
 }
 
@@ -1883,14 +1920,12 @@ function cardHTML(o){
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
  const save=readSavedGame();
- const saveScale=save&&START_SCALES[save.scale]?START_SCALES[save.scale].name:(save?((save.team||[]).length+'人旧版公司'):'');
  const saveBlock=save?`<div class="continue-save">
-   <div><span>本机存档</span><b>第 ${save.year} 年${save.year>=8&&save.quarter===1?' · 年度经营':` Q${save.quarter}`} · ${saveScale}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · 声望 ${Number(save.reputation)||0}</small></div>
+   <div><span>本机存档</span><b>第 ${save.year} 年${save.year>=8&&save.quarter===1?' · 年度经营':` Q${save.quarter}`} · ${save.diff}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · 声望 ${Number(save.reputation)||0}</small></div>
    <div class="row"><button class="btn" onclick="loadSavedGame()">继续经营 →</button><button class="btn secondary" onclick="deleteSaveFromStart()">删除存档</button></div>
  </div>`:'';
- const projectHints={boutique6:'小单与300万级以内机会更多',growth20:'中型年框与Pitch最均衡',integrated40:'大客户、大Pitch出现更频繁'};
- return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>选一个你要接手的公司。规模不同，初始团队、现金、老客户和市场喂给你的项目都会不同。</p>${saveBlock}<div class="scale-start">
-   ${Object.values(START_SCALES).map(p=>`<div class="scale-choice" onclick="start('${p.key}')"><span>START WITH</span><strong>${p.name}</strong><small>${p.desc}</small><div class="scale-choice-meta"><b>初始声望 ${p.startRep}</b><b>现金 ${fmt(p.startCash)}</b><b>${projectHints[p.key]}</b></div></div>`).join('')}
+ return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>选一个年代开公司。团队起点相同，但预算、机会、税率和Pitch环境完全不同。</p>${saveBlock}<div class="difficulty">
+   ${Object.values(DIFF).map(d=>`<div class="diff" onclick="start('${d.name}')"><span>${d.label}</span><strong>${d.name}</strong><small>${d.desc}</small><div class="scale-choice-meta"><b>初始现金 ${fmt(d.startCash)}</b><b>项目机会 ${d.opp}/季左右</b><b>企业税率 ${Math.round(d.tax*100)}%</b></div></div>`).join('')}
  </div><p class="footer">利润和声望是两条独立成绩线。前7年按季度经营，第8年起按年度经营，第12年标准退休。</p></div></div>`;
 }
 render();
