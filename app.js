@@ -1692,21 +1692,31 @@ function durationLabel(weeks){
 }
 function cardHTML(o){
  ensureProjectNeeds(o);
- const lack=Math.max(0,o.people-available().length);
+ const availCount=available().length;
+ const lack=Math.max(0,o.people-availCount);
  const isPitch=o.type==='pitch';
  const staffingNote=lack?` · 缺 ${lack} 人`:'';
- const supportBonus=projectMatch(o).supportBonus||0;
+ const req=o.requiredReputation||0;
+ const repLocked=req>S.reputation;
+ const level=clamp(Math.round(Number(o.resourceBoost)||0),0,2);
+ const unit=resourceBoostUnit();
+ const boostPeople=resourceBoostPeople(o);
+ const maxBoost=maxResourceBoostLevel(o);
+ const qualityBonus=resourceBoostQualityBonus(o);
+ const winBonus=resourceBoostWinBonus(o);
  const secondLine=isPitch
    ? `${o.inbound?'主动邀约 · ':o.renewal?'续约也需重新比稿 · ':''}比稿期 ${o.pitchWeeks}周${staffingNote}`
    : `${o.renewal?'老客户续约 · 毛利被压低 · ':''}无需比稿 · 直接接单${staffingNote}`;
  const feeLine=isPitch&&o.pitchFee>0?`<br>2016 比稿费 ${fmt(o.pitchFee)} · 无论输赢`:'';
  const repMargin=o.reputationMarginBonus||0;
- const fameLine=repMargin
-   ? `<span class="fame-benefit ${repMargin<0?'fame-cost':''}">声望影响毛利：${repMargin>0?'+':''}${Math.round(repMargin*100)}pt</span>`
-   : '';
+ const fameLine=repMargin?`<span class="fame-benefit ${repMargin<0?'fame-cost':''}">声望影响毛利：${repMargin>0?'+':''}${Math.round(repMargin*100)}pt</span>`:'';
  const expectedMargin=o.value*o.margin;
- const flavorLabel=projectFlavor(o)==='prestige'?'偏声望':projectFlavor(o)==='delivery'?'偏赚钱':'均衡';
- return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div><div class="project-fact project-fact-reputation"><span>项目声誉值</span><b>${o.reputationValue}</b><small>${flavorLabel}</small></div></div><div class="meta">${secondLine}${feeLine}${fameLine}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.pitchSupport?`取消Pitch Free · +${supportBonus}%`:`补Pitch Free · ${fmt(2*freeWeeklyRate()*(o.pitchWeeks||2))}起`}</button>`:''}</div></div>`;
+ const gateLine=req?`<div class="reputation-gate ${repLocked?'gate-locked':'gate-open'}"><span>客户门槛</span><b>声望 ${req}</b><small>当前 ${S.reputation}</small></div>`:'';
+ const boostSummary=level?`已加码 ${level}/2 · 额外 ${boostPeople} 人 · 质量 +${qualityBonus}${isPitch?` · Pitch +${winBonus}%`:''}`:`每次 +${unit} 人 · 最多 2 次`;
+ const boostLabel=level===0?`资源加码 · +${unit}人`:(level<2&&level<maxBoost?`再加码 · +${unit}人`:'取消加码');
+ const boostDisabled=repLocked||(maxBoost<=0&&level===0);
+ const actionLabel=repLocked?`声望 ${req} 才能进`:(isPitch?'去比稿':'接下来');
+ return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${level?` · 加码 +${boostPeople}`:''}${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div>${gateLine}<div class="resource-boost ${level?'resource-boost-on':''}"><span>资源加码</span><b>${boostSummary}</b></div><div class="meta">${secondLine}${feeLine}${fameLine}</div><div class="row" style="margin-top:10px"><button class="btn ${repLocked?'reputation-locked-btn':''}" onclick="requestProject('${o.id}')" ${repLocked?'disabled':''}>${actionLabel}</button><button class="btn secondary" onclick="boost('${o.id}')" ${boostDisabled?'disabled':''}>${boostLabel}</button></div></div>`;
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
