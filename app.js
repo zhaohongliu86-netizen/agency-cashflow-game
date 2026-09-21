@@ -8,6 +8,7 @@ const DIFF={
   2016:{name:'2016',label:'最容易',desc:'预算更宽松，机会更多，行业还相信增长。',tax:.25,deal:1.18,baseWin:5,opp:5,startCash:160},
   2026:{name:'2026',label:'最难',desc:'钱少、要求多、Pitch多，客户也会问AI能不能先来一版。',tax:.25,deal:.86,baseWin:-5,opp:3,startCash:100}
 };
+function gameRules(){return DIFF[S?.diff]||DIFF[2026]}
 // 每8年换一轮行业气候。30年模式会经历前四段；后两段保留给未来继续扩年限。
 const ECON_PHASES=[
  {key:'good1',label:'景气',deal:1.12,opp:1,mix:[.20,.30],shrink:.12,renewal:.05,salary:.06,
