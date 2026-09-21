@@ -1518,8 +1518,8 @@ function render(){
 function durationLabel(weeks){
  if(weeks>=48)return '1年';
  if(weeks>=36)return '9个月';
- if(weeks>=24)return '2个季度';
- if(weeks>=12)return '1个季度';
+ if(weeks>=24)return '6个月';
+ if(weeks>=12)return '3个月';
  if(weeks>=8)return '2个月';
  return '1个月';
 }
@@ -1544,7 +1544,8 @@ function cardHTML(o){
  const moraleLine=moraleGate.required
    ? `<div class="senior-requirement ${moraleLocked?'senior-short':'senior-ok'}">士气门槛 ${moraleGate.required} · 当前 ${moraleGate.current}</div>`
    : '';
- return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'团队士气不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
+ const expectedMargin=o.value*o.margin;
+ return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div><div class="meta">${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'团队士气不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
