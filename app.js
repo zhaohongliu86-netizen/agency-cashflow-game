@@ -137,7 +137,12 @@ function companyCapabilities(team=S?.team||[]){
    }
    const avg=sumW?sumSkill/sumW:60;
    const coverage=clamp(sumW/(size*CAPABILITY_TARGET[key]),0,1.15);
-   result[key]=clamp(Math.round(35+(avg-60)*1.25+coverage*18),35,98);
+   const structureBias=size<=10
+     ? ({strategy:3,creative:7,service:-5,execution:-12}[key]||0)
+     : size>=30
+       ? ({strategy:0,creative:-3,service:5,execution:8}[key]||0)
+       : 0;
+   result[key]=clamp(Math.round(35+(avg-60)*1.25+coverage*18+structureBias),35,98);
  }
  return result;
 }
