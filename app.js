@@ -65,7 +65,7 @@ function realProjectValue(value){return value/projectPriceIndex()}
 function salaryGrowthRate(year=S?.year||1){return economyPhase(year).salary||0}
 
 const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
-const roles=['策略','文案','美术','阿康','制片'];
+const roles=['策略','创意','阿康','制片'];
 
 const CAPABILITY_META={
  strategy:{label:'策略力'},creative:{label:'创意力'},service:{label:'服务力'},execution:{label:'资源执行力'}
@@ -74,6 +74,7 @@ const ROLE_AFFINITY={
  老板:{strategy:.70,creative:.90,service:.45,execution:.25},
  策略:{strategy:1,creative:.25,service:.15,execution:.10},
  阿康:{strategy:.20,creative:.10,service:1,execution:.30},
+ 创意:{strategy:.16,creative:1,service:.10,execution:.18},
  文案:{strategy:.20,creative:1,service:.10,execution:.10},
  美术:{strategy:.10,creative:1,service:.10,execution:.25},
  制片:{strategy:.10,creative:.10,service:.25,execution:1}
@@ -83,6 +84,7 @@ function baseRole(role=''){
  if(role==='老板')return '老板';
  if(role.includes('策略'))return '策略';
  if(role.includes('客户')||role.includes('阿康'))return '阿康';
+ if(role.includes('创意'))return '创意';
  if(role.includes('文案'))return '文案';
  if(role.includes('美术'))return '美术';
  if(role.includes('制片')||role.includes('制作'))return '制片';
@@ -91,14 +93,15 @@ function baseRole(role=''){
 function roleTitle(role,skill){
  if(role==='策略')return skill>=84?'策略总监':'策略';
  if(role==='阿康')return skill>=84?'客户总监':'阿康';
+ if(role==='创意')return skill>=84?'创意总监':'创意';
  if(role==='文案')return skill>=84?'文案总监':'文案';
  if(role==='美术')return skill>=84?'美术总监':'美术';
  if(role==='制片')return skill>=84?'资深制片':'制片';
  return role;
 }
-function roleSpec(role){return role==='文案'||role==='美术'?'创意':role==='策略'?'品牌':role==='阿康'?'客户':'制作'}
+function roleSpec(role){return role==='创意'||role==='文案'||role==='美术'?'创意':role==='策略'?'品牌':role==='阿康'?'客户':'制作'}
 function starterSkill(scaleKey,role,index){
- const base={策略:73,阿康:70,文案:73,美术:73,制片:71}[role]||72;
+ const base={策略:73,阿康:70,创意:73,文案:73,美术:73,制片:71}[role]||72;
  const bias=scaleKey==='boutique6'?4:scaleKey==='growth20'?1:-1;
  const senior=index===0?(scaleKey==='boutique6'?5:10):(index>0&&index%6===0?6:0);
  const orgBias=
@@ -110,7 +113,7 @@ function starterSkill(scaleKey,role,index){
 }
 function salaryFor(role,skill){
  const seniorPremium=skill>=84?0.45:0;
- return +((0.9+(skill-60)*0.055+(role==='策略'?0.35:role==='制片'?0.15:0)+seniorPremium)*salaryMarketIndex()).toFixed(1);
+ return +((0.9+(skill-60)*0.055+(role==='策略'?0.35:role==='制片'?0.15:role==='创意'?0.12:0)+seniorPremium)*salaryMarketIndex()).toFixed(1);
 }
 function buildStarterTeam(scaleKey){
  const profile=START_SCALES[scaleKey]||START_SCALES.growth20;
@@ -154,6 +157,17 @@ function reputationLabel(score=S?.reputation||0){
  if(score>=60)return '圈内有名';
  if(score>=40)return '有些名气';
  return '还没什么人认识';
+}
+
+function reputationEffects(score=S?.reputation||0){
+ const pitchBonus=clamp(Math.round((score-50)*.30),-6,12);
+ const oppBonus=score>=85?2:score>=60?1:0;
+ const marginBonus=score>=90?.06:score>=75?.04:score>=60?.02:0;
+ return {pitchBonus,oppBonus,marginBonus};
+}
+function reputationImpactText(){
+ const e=reputationEffects();
+ return `新业务 ${e.oppBonus?'+':''}${e.oppBonus} · Pitch信任 ${e.pitchBonus>=0?'+':''}${e.pitchBonus}% · 主动邀约 ${Math.round(inboundChance()*100)}%`;
 }
 function agencyType(){
  const caps=companyCapabilities();
@@ -440,13 +454,16 @@ function showComboFeedback(streak){
  setTimeout(()=>host.remove(),2700);
 }
 function inboundChance(){
- let chance=.03;
- if(S.reputation>=65)chance+=.07;
- if(S.reputation>=80)chance+=.10;
- if(S.winStreak>=2)chance+=.12;
- if(S.winStreak>=4)chance+=.10;
- chance+=Math.min(.12,(S.qualityMomentum||0)*.03);
- return clamp(chance,0,.48);
+ let chance=.02;
+ if(S.reputation>=40)chance+=.04;
+ if(S.reputation>=55)chance+=.06;
+ if(S.reputation>=70)chance+=.08;
+ if(S.reputation>=85)chance+=.10;
+ if(S.reputation>=95)chance+=.08;
+ if(S.winStreak>=2)chance+=.07;
+ if(S.winStreak>=4)chance+=.06;
+ chance+=Math.min(.09,(S.qualityMomentum||0)*.03);
+ return clamp(chance,0,.58);
 }
 function createInboundOpportunity(){
  const base=makeOpportunity('pitch');
@@ -454,7 +471,9 @@ function createInboundOpportunity(){
  base.inboundBonus=12;
  base.name='主动邀约 · '+pick(['年度品牌战役','新品整合传播','品牌焕新项目','下一年度核心战役']);
  delete base.needPrimary;delete base.needSecondary;ensureProjectNeeds(base);
- base.margin=Math.min(.5,+(base.margin+.02).toFixed(2));
+ const fameMargin=reputationEffects().marginBonus;
+ base.fameMarginBonus=fameMargin;
+ base.margin=Math.min(.54,+(base.margin+.02+fameMargin).toFixed(2));
  base.people=requiredPeople('pitch',base.value,base.duration);
  if(S.records)S.records.inboundOffers++;
  return base;
@@ -591,7 +610,7 @@ function projectNeedLabel(o){
 }
 function rolesForCapability(key){
  if(key==='strategy')return ['策略'];
- if(key==='creative')return ['文案','美术'];
+ if(key==='creative')return ['创意'];
  if(key==='service')return ['阿康'];
  return ['制片'];
 }
@@ -701,7 +720,7 @@ function maybeCreateRenewal(p){
 }
 function genOpp(){
  const econ=economyPhase();
- const n=Math.max(2,gameRules().opp + econ.opp + (S.reputation>=70?1:0));
+ const n=Math.max(2,gameRules().opp + econ.opp + reputationEffects().oppBonus);
  S.opp=[];
  for(let i=0;i<n;i++)S.opp.push(makeOpportunity());
  if(S.pendingRenewals&&S.pendingRenewals.length){
@@ -793,7 +812,7 @@ function showStaffingChoice(o,freeCount){
  const freeRisk=isPitch
    ? (share>.5
       ? `Free 占到 ${Math.round(share*100)}%，超过一半：Pitch 胜率约再降 8 个百分点。这里只签 ${o.pitchWeeks} 周比稿期，不包含后续执行。`
-      : `Free 只覆盖 ${o.pitchWeeks} 周比稿期。赢稿后，再决定让他们转正还是继续以 Free 身份执行。`)
+      : `Free 只覆盖 ${o.pitchWeeks} 周比稿期。赢稿后如果继续执行，Free 仍按外部资源结算，不进入正式编制。`)
    : (share>.5
       ? `Free 占到 ${Math.round(share*100)}%，执行可以接，但外部团队过半，质量和声望风险更高。`
       : `Free 覆盖整个执行周期，代价是项目成本和轻微执行质量风险。`);
@@ -876,61 +895,6 @@ function finalizePitchExecution(o,selected,freeCount,mode,teamScore){
  saveGame(false);
  showManpowerDelta(manpowerBefore,manpowerAfter,`${o.name} 开始执行`);
 }
-function showPostPitchExecutionChoice(o,selected,freeCount,teamScore){
- const host=document.createElement('div');host.className='overlay';host.id='executionStaffingModal';
- const converts=projectHireRoles(o,freeCount).map(role=>createHireCandidate(role));
- const monthly=converts.reduce((a,p)=>a+p.salary,0);
- const conversionFee=+(monthly*.5).toFixed(1);
- const executionFreeCost=executionFreeCostFor(o,freeCount);
-
- host.innerHTML=`<div class="modal staffing-modal">
-   <div class="big">稿赢了，Free 怎么办？</div>
-   <p><b>${o.name}</b> 接下来要执行 ${durationLabel(o.duration)}。刚才参与 Pitch 的 ${freeCount} 个 Free，合同只到比稿结束。</p>
-   <div class="staffing-options">
-     <div class="staffing-option">
-       <h3>把 Free 转正</h3>
-       <p>熟悉项目的人直接留下，进入正式编制。</p>
-       <p><b>转正成本约 ${fmt(conversionFee)}</b><br>以后每月固定工资 +${fmt(monthly)}</p>
-       <p class="muted">执行更稳定，但从这一刻开始背长期人力成本。</p>
-       <button class="btn" id="convertFree">转正 ${freeCount} 人</button>
-     </div>
-     <div class="staffing-option">
-       <h3>继续用 Free</h3>
-       <p>不增加正式编制，让他们继续跟完整个执行周期。</p>
-       <p><b>执行期 Free 成本 ${fmt(executionFreeCost)}</b></p>
-       <p class="bad">Free 占比 ${Math.round((freeCount/o.people)*100)}%，长期执行会带来一定质量风险。</p>
-       <button class="btn secondary" id="continueFree">继续用 Free</button>
-     </div>
-   </div>
- </div>`;
- document.body.appendChild(host);
- host.querySelector('#convertFree').onclick=()=>{
-   host.remove();
-   const manpowerBefore=totalFreeSlots();
-   // Recreate equivalent converted staff at commit time to keep the choice deterministic enough for play.
-   const actual=converts;
-   const before=S.team.length;
-   const actualMonthly=actual.reduce((a,p)=>a+p.salary,0);
-   const actualFee=+(actualMonthly*.5).toFixed(1);
-   S.cash-=actualFee;S.yearSpend+=actualFee;S.profit-=actualFee;
-   actual.forEach(p=>{S.team.push(p);assignPerson(p,o.duration)});
-   showScaleUpgrade(before,S.team.length);
-   selected.forEach(p=>assignPerson(p,o.duration));
-   const match=projectMatch(o);
-   const quality=clamp(teamScore*.55+match.score*.45+Math.random()*14-5+(o.boost?3:0),42,98);
-   S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,needPrimary:o.needPrimary,needSecondary:o.needSecondary,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
-   trackProject(o);
-   log(`赢稿后把 ${freeCount} 个 Free 转正。转正成本 ${fmt(actualFee)}，每月固定工资 +${fmt(actualMonthly)}。`,'good');
-   const manpowerAfter=totalFreeSlots();
-   render();
-   saveGame(false);
-   showManpowerDelta(manpowerBefore,manpowerAfter,`Free 转正并投入 ${o.name}`);
- };
- host.querySelector('#continueFree').onclick=()=>{
-   host.remove();
-   finalizePitchExecution(o,selected,freeCount,'free',teamScore);
- };
-}
 function budgetShrinkChance(){
  return economyPhase().shrink;
 }
@@ -1005,7 +969,7 @@ function takeProject(id,useFree=false){
  const boost=o.boost?pick([5,6,7,8,9,10,11,12]):0;
  const freePenalty=freeShare>.5?-8:0;
  const inboundBonus=o.inbound?(o.inboundBonus||12):0;
- const reputationBonus=clamp((S.reputation-50)*.12,-5,6);
+ const reputationBonus=reputationEffects().pitchBonus;
  const moraleBonus=clamp((S.morale-60)*.08,-4,4);
  const pWin=clamp(34+gameRules().baseWin+match.bonus+staffing+boost+freePenalty+inboundBonus+reputationBonus+moraleBonus,8,92);
  // 自有员工参与比稿不产生额外现金成本。只有 Free 和主动加码才产生增量费用。
@@ -1064,7 +1028,7 @@ function takeProject(id,useFree=false){
    afterClose:()=>{
      if(!won)return;
      const continueExecution=()=>{
-       if(freeCount>0&&useFree)showPostPitchExecutionChoice(o,selected,freeCount,teamScore);
+       if(freeCount>0&&useFree)finalizePitchExecution(o,selected,freeCount,'free',teamScore);
        else finalizePitchExecution(o,selected,0,'internal',teamScore);
      };
      maybeShowBudgetShrink(o,continueExecution);
@@ -1739,22 +1703,22 @@ function render(){
      <b>${fmt(S.profit)}</b>
      <small>利润率 ${profitRate.toFixed(1)}% · 累计收入 ${fmt(S.revenue)}</small>
    </div>
-   <div class="core-stat reputation-core">
+   <div class="core-stat reputation-core" title="高质量的大项目最能提升声望；低质量项目会伤声望。">
      <span>行业声望</span>
      <b>${S.reputation}<em>分</em></b>
-     <small>${reputationLabel()} · 高声望会带来更多主动邀约</small>
-   </div>
-   <div class="core-stat manpower-core">
-     <span>可用人力</span>
-     <b>${freeSlotsNow}<em>/ ${capacityNow}</em></b>
-     <div class="manpower-meter"><i style="width:${capacityNow?Math.round((freeSlotsNow/capacityNow)*100):0}%"></i></div>
-     <small>${usedNow} 槽被项目占用 · 资深仍可双开，但不再决定接单资格</small>
+     <small>${reputationLabel()} · ${reputationImpactText()}</small>
    </div>
  </div>
  <div class="capability-strip">
    ${Object.entries(CAPABILITY_META).map(([k,m])=>`<div class="capability"><span>${m.label}</span><b>${caps[k]}</b><i><u style="width:${caps[k]}%"></u></i></div>`).join('')}
  </div>
- <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${profitRate.toFixed(1)}%</b><span>累计利润率</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档</small></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div><div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格指数 ×${projectPriceIndex().toFixed(2)}</small></div></div>
+ <div class="stats secondary-stats">
+   <div class="stat"><b>${fmt(S.cash)}</b><span>现金</span></div>
+   <div class="stat"><b>${S.team.length}人</b><span>团队</span><small>${band}人档</small></div>
+   <div class="stat"><b>${freeSlotsNow}/${capacityNow}</b><span>可用人力</span><small>${usedNow}槽占用</small></div>
+   <div class="stat"><b>${S.morale}</b><span>士气</span></div>
+   <div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格 ×${projectPriceIndex().toFixed(2)}</small></div>
+ </div>
  <div class="grid"><main class="panel"><h2>${isAnnualMode()?'这一年，生意自己不会长出来':'这季度，生意自己不会长出来'}</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">'+emptyOpportunityCopy+'</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
    <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">${isAnnualMode()?'推进这一年 →':'推进一季度 →'}</button>
    <div class="quarter-action-copy">
@@ -1790,14 +1754,14 @@ function cardHTML(o){
    : `周期 ${durationLabel(o.duration)}（${o.duration}周）`;
  const internalUse=Math.min(o.people,available().length);
  const remaining=Math.max(0,totalFreeSlots()-internalUse);
- const manpowerPreview=isPitch
-   ? `赢稿执行将占用约 ${internalUse} 人力槽`
-   : `接下后约剩 ${remaining} 人力槽`;
- const moraleLine=moraleGate.required
-   ? `<div class="senior-requirement ${moraleLocked?'senior-short':'senior-ok'}">士气门槛 ${moraleGate.required} · 当前 ${moraleGate.current}</div>`
+ const moraleLine=moraleLocked
+   ? `<div class="senior-requirement senior-short">士气不足：需要 ${moraleGate.required} · 当前 ${moraleGate.current}</div>`
+   : '';
+ const fameLine=o.inbound&&o.fameMarginBonus
+   ? `<span class="fame-benefit">声望红利：毛利率 +${Math.round(o.fameMarginBonus*100)}pt</span>`
    : '';
  const expectedMargin=o.value*o.margin;
- return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div><div class="project-fit ${match.score>=76?'fit-good':match.score<67?'fit-bad':''}"><span>项目更看重</span><b>${projectNeedLabel(o)}</b><strong>${match.label} · ${match.score}</strong></div><div class="meta">${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'团队士气不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码提案 · 胜率 +5~12%'}</button>`:''}</div></div>`
+ return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div><div class="project-fit ${match.score>=76?'fit-good':match.score<67?'fit-bad':''}"><span>项目更看重</span><b>${projectNeedLabel(o)}</b><strong>${match.label} · ${match.score}</strong></div><div class="meta">${secondLine}${feeLine}${fameLine}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'团队士气不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码提案 · 胜率 +5~12%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
