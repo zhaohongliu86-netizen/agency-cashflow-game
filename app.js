@@ -75,7 +75,31 @@ function takeProject(id,useFree=false){
    S.losses++;S.lossStreak++;S.winStreak=0;S.reputation=clamp(S.reputation-1,0,100);log(`输了：${o.name}。烧掉 ${fmt(pitchCost)}，提案室里只剩半瓶矿泉水。`,'bad');
    if(S.lossStreak>=3){S.lossStreak=0;maybeLeave()}
  }
- S.opp=S.opp.filter(x=>x.id!==id);render();
+ S.opp=S.opp.filter(x=>x.id!==id);
+ render();
+ showProjectResult({won,type:o.type,name:o.name,value:o.value,cost:pitchCost,pWin});
+}
+function showProjectResult({won,type,name,value,cost,pWin}){
+ const old=document.querySelector('.result-flash'); if(old)old.remove();
+ const host=document.createElement('div');
+ host.className=`result-flash ${won?'result-win':'result-loss'}`;
+ host.setAttribute('role','status');
+ host.setAttribute('aria-live','assertive');
+ const label=won
+   ? (type==='pitch'?'赢稿！':type==='retainer'?'拿下年框！':'接到了！')
+   : (type==='pitch'?'丢稿。':type==='retainer'?'年框没拿到。':'没接到。');
+ const streak=won && S.winStreak>1 ? `连续 ${S.winStreak} 次拿下` : (!won && S.lossStreak>1 ? `连续 ${S.lossStreak} 次没拿到` : '');
+ const amount=won ? `案值 ${fmt(value)}` : `本次投入 −${fmt(cost)}`;
+ host.innerHTML=`<div class="result-card">
+   <div class="result-kicker">${type==='pitch'?'PITCH RESULT':type==='retainer'?'RETAINER RESULT':'PROJECT RESULT'}</div>
+   <div class="result-title">${label}</div>
+   <div class="result-project">${name}</div>
+   <div class="result-amount">${amount}</div>
+   <div class="result-meta">当时胜率约 ${pWin.toFixed(0)}%${streak?` · ${streak}`:''}</div>
+ </div>`;
+ document.body.appendChild(host);
+ window.setTimeout(()=>host.classList.add('result-leave'),1250);
+ window.setTimeout(()=>host.remove(),1650);
 }
 function maybeLeave(){
  let risk=.42-clamp((S.morale-50)/130,0,.25); if(Math.random()>risk){log('三连败之后团队情绪低，但这次没人辞职。','muted');return}
