@@ -64,6 +64,7 @@ const roles=['阿康','文案','美术','策略','制片'];
 
 let S=null;
 let gossipTimer=null;
+const STANDARD_YEARS=12;
 const MAX_YEARS=30;
 const SAVE_KEY='agency-cashflow-save-v1';
 
@@ -78,7 +79,7 @@ function readSavedGame(){
 }
 function normalizeLoadedGame(data){
  const defaults={
-   pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
+   pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
    route:{pitch:0,retainer:0,small:0,free:0},yearStartProfit:0,
    records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
  };
@@ -88,6 +89,8 @@ function normalizeLoadedGame(data){
  if(!Number.isFinite(loaded.records.maxQuarterProfit))loaded.records.maxQuarterProfit=-Infinity;
  loaded.awaitingYearEnd=!!loaded.awaitingYearEnd;
  loaded.lastBudgetShrinkYear=Number(loaded.lastBudgetShrinkYear)||0;
+ loaded.evergreen=!!loaded.evergreen||loaded.year>STANDARD_YEARS;
+ loaded.sevenYearCelebrated=typeof data.sevenYearCelebrated==='boolean'?data.sevenYearCelebrated:loaded.year>7;
  loaded.yearStartProfit=Number.isFinite(loaded.yearStartProfit)
    ? loaded.yearStartProfit
    : (Number(loaded.profit)||0)-(Number(loaded.taxable)||0);
@@ -121,6 +124,7 @@ function loadSavedGame(){
  render();
  showSaveToast('存档已读取',`继续第 ${S.year} 年 Q${S.quarter}`);
  if(S.awaitingYearEnd)setTimeout(()=>yearEnd(),250);
+ else if(S.year===7&&!S.sevenYearCelebrated)setTimeout(()=>showSevenYearCongrats(),300);
 }
 function showSaveToast(title,copy,bad=false){
  const old=document.querySelector('.save-toast');if(old)old.remove();
@@ -133,7 +137,7 @@ function showSaveToast(title,copy,bad=false){
 }
 function start(diff){
  const d=DIFF[diff];
- S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
+ S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
  S.active.push({id:uid(),name:'老客户A · 日常品牌服务',type:'retainer',value:72,margin:.42,weeks:24,left:24,people:3,quality:70,legacy:true});
  S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
  allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render(); saveGame(false);
@@ -1072,11 +1076,68 @@ function showYearFeedback({bonus,party,bonusCost,partyCost,tax,feedback,salaryGr
      <span>纳税 <b>${fmt(tax)}</b></span>
      <span>明年工资涨幅 <b>${Math.round(salaryGrowth*100)}%</b></span>
    </div>
-   <button class="btn" id="continueAfterYear">${S.year>=MAX_YEARS?`看${MAX_YEARS}年最终结算`:S.year%3===0?`看第${S.year}年阶段结算`:'进入下一年 →'}</button>
+   <button class="btn" id="continueAfterYear">${S.evergreen&&S.year>=MAX_YEARS?`看${MAX_YEARS}年长青结算`:!S.evergreen&&S.year===STANDARD_YEARS?'进入12年退休结算':S.year%3===0?`看第${S.year}年阶段结算`:'进入下一年 →'}</button>
  </div>`;
  document.body.appendChild(host);
  host.querySelector('#continueAfterYear').onclick=()=>{host.remove();onContinue()};
 }
+function showSevenYearCongrats(){
+ if(!S||S.sevenYearCelebrated||S.year!==7)return;
+ S.sevenYearCelebrated=true;
+ saveGame(false);
+ const host=document.createElement('div');
+ host.className='overlay survival-overlay';
+ host.id='survivalModal';
+ host.innerHTML=`<div class="modal survival-card">
+   <div class="survival-kicker">7 YEARS SURVIVED</div>
+   <div class="big">恭喜。你已经把公司开过了第7年。</div>
+   <p>按一项美国 Census 历史样本对单体广告公司的研究，平均存续时间大约就是 <b>7年</b>。</p>
+   <p class="muted">你现在已经不是“新公司”了。接下来拼的不是活下来，是这家公司最终会变成什么。</p>
+   <button class="btn" id="survivalContinue">知道了，继续开</button>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#survivalContinue').onclick=()=>host.remove();
+}
+
+function showTwelveYearRetirement(){
+ const host=document.createElement('div');
+ host.className='overlay retirement-overlay';
+ host.id='retirementModal';
+ const roi=S.revenue?S.profit/S.revenue*100:0;
+ const q=Number.isFinite(S.records?.maxQuarterProfit)?S.records.maxQuarterProfit:0;
+ host.innerHTML=`<div class="modal retirement-card">
+   <div class="retirement-kicker">12 YEARS · STANDARD ENDING</div>
+   <div class="big">十二年了。可以退休了。</div>
+   <p>标准模式到这里正式结算。你可以把这家公司留在第12年，也可以进入长青模式，继续经营到第${MAX_YEARS}年。</p>
+   <div class="personal-records">
+     <div><span>累计利润</span><b>${fmt(S.profit)}</b></div>
+     <div><span>累计收入</span><b>${fmt(S.revenue)}</b></div>
+     <div><span>最大单</span><b>${fmt(S.records?.maxDeal||0)}</b></div>
+     <div><span>最高单季利润</span><b>${fmt(q)}</b></div>
+     <div><span>最长连胜</span><b>×${S.records?.maxWinStreak||0}</b></div>
+     <div><span>利润率</span><b>${roi.toFixed(1)}%</b></div>
+   </div>
+   <div class="retirement-actions">
+     <button class="btn" id="retireAtTwelve">退休，结算这12年</button>
+     <button class="btn secondary" id="enterEvergreen">进入长青模式 →</button>
+   </div>
+   <p class="muted retirement-note">长青模式不再属于标准12年一局，最多继续到第${MAX_YEARS}年。</p>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#retireAtTwelve').onclick=()=>{
+   host.remove();
+   S.ended=true;
+   clearSave();
+   showEnding('retired12');
+ };
+ host.querySelector('#enterEvergreen').onclick=()=>{
+   host.remove();
+   S.evergreen=true;
+   log('第12年标准结算完成。公司进入长青模式。','good');
+   advanceToNextYear();
+ };
+}
+
 function advanceToNextYear(){
  if(S.year>=MAX_YEARS){endGame();return}
  S.yearStartProfit=S.profit;
@@ -1086,6 +1147,7 @@ function advanceToNextYear(){
  genOpp();
  render();
  saveGame(false);
+ if(S.year===7&&!S.sevenYearCelebrated)setTimeout(()=>showSevenYearCongrats(),250);
 }
 function showMilestoneSummary(){
  const host=document.createElement('div');
@@ -1096,7 +1158,7 @@ function showMilestoneSummary(){
  host.innerHTML=`<div class="modal milestone-card">
    <div class="milestone-kicker">第 ${S.year} 年 · 阶段结算</div>
    <div class="big">${S.year} 年了，公司还在。</div>
-   <p class="muted">最初只想活三年。现在可以继续，最多经营到第 ${MAX_YEARS} 年。</p>
+   <p class="muted">${S.evergreen?'长青模式继续经营中。':'标准模式第12年退休结算之前，每3年看一次公司变成了什么。'}</p>
    <div class="personal-records">
      <div><span>累计利润</span><b>${fmt(S.profit)}</b></div>
      <div><span>最大单</span><b>${fmt(S.records?.maxDeal||0)}</b></div>
@@ -1135,7 +1197,8 @@ function closeYear(bonus,party){
  showYearFeedback({
    bonus,party,bonusCost,partyCost,tax,feedback,salaryGrowth,preTaxYearProfit,
    onContinue:()=>{
-     if(S.year>=MAX_YEARS){endGame();return}
+     if(S.evergreen&&S.year>=MAX_YEARS){endGame();return}
+     if(!S.evergreen&&S.year===STANDARD_YEARS){showTwelveYearRetirement();return}
      if(S.year%3===0){showMilestoneSummary();return}
      advanceToNextYear();
    }
@@ -1298,6 +1361,7 @@ function endingText(reason){
    ? ['及时止损者','年关到了，你决定把门关上。至少亏损没有继续长大。']
    : ['见好就收','公司还能开，但你决定在这一年结束时收手。'];
  if(reason==='retired')return ['阶段毕业','公司还可以继续，但你决定把这一段经营史定格在这里。'];
+ if(reason==='retired12')return ['十二年退休','你把一家广告公司完整地开了十二年。标准模式到这里，账本合上，灯也可以关了。'];
  const n=S.team.length,p=S.profit;
  if(n<=14&&p>800)return ['精品店老板','人没怎么长，利润倒长得很快。你相信少开会，多收钱。'];
  if(S.route.retainer>S.route.pitch*1.3)return ['年框地主','别人追热点，你收租。最大的创意，是让客户每年都续。'];
@@ -1359,7 +1423,7 @@ function render(){
  const avail=available().length;
  const freeSlotsNow=totalFreeSlots(),capacityNow=totalCapacity(),usedNow=usedCapacity();
  const scaleStep=businessScaleStep(),band=businessScaleBand(),nextBand=nextScaleAt();
- app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · 最多经营${MAX_YEARS}年 · 每3年一次阶段结算</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
+ app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · ${S.evergreen?`长青模式 / 最多${MAX_YEARS}年`:`标准模式 / ${STANDARD_YEARS}年退休`} · 每3年阶段结算</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
  <div class="core-stats">
    <div class="core-stat profit-core ${S.profit<0?'negative-profit':''}">
      <span>累计利润</span>
@@ -1423,6 +1487,6 @@ function startHTML(){
    <div><span>本机存档</span><b>第 ${save.year} 年 Q${save.quarter} · ${save.diff}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · ${(save.team||[]).length} 人</small></div>
    <div class="row"><button class="btn" onclick="loadSavedGame()">继续经营 →</button><button class="btn secondary" onclick="deleteSaveFromStart()">删除存档</button></div>
  </div>`:'';
- return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>先活过三年。之后你可以一直开，最多经营30年。客户不保证续约，Pitch不保证赢，员工不保证不跑。</p>${saveBlock}<div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">前三年仍是一局约 5–8 分钟；每3年会做一次阶段结算。存档保存在当前浏览器。</p></div></div>`;
+ return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>把一家广告公司开过12年。第3、6、9年阶段结算，第12年正式退休；退休后还可以选择进入长青模式。</p>${saveBlock}<div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">前三年仍约 5–8 分钟；标准模式共12年，可随时存档。第7年还有一个小纪念。存档保存在当前浏览器。</p></div></div>`;
 }
 render();
