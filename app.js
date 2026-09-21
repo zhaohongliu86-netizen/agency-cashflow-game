@@ -64,10 +64,6 @@ function freeWeeklyRate(){return salaryMarketIndex()}
 function realProjectValue(value){return value/projectPriceIndex()}
 function salaryGrowthRate(year=S?.year||1){return economyPhase(year).salary||0}
 
-const baseTeam=[
- ['老板','老板','创意',3.0,88],['策略A','策略','品牌',2.5,82],['客户A','阿康','客户',1.2,67],['客户B','阿康','客户',1.5,72],['客户总监','资深阿康','客户',3.0,84],['文案A','文案','创意',1.1,70],['文案总监','文案总监','创意',3.0,86],['美术A','美术','创意',1.2,73],['美术总监','美术总监','创意',3.0,87],['制片A','制片','制作',2.0,80]
-].map((x,i)=>({id:`p${i}`,name:x[0],role:x[1],spec:x[2],salary:x[3],skill:x[4],slots:[],tenure:2}));
-
 const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
 const roles=['策略','文案','美术','阿康','制片'];
 
