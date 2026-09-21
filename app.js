@@ -776,17 +776,22 @@ function showStaffingChoice(o,freeCount){
  host.querySelector('#confirmFree').onclick=()=>{host.remove();takeProject(o.id,true)};
  host.querySelector('#confirmHire').onclick=()=>{host.remove();hireForProject(o,candidates)};
 }
-function startDirectExecution(o,selected,freeCount,freeCost,teamScore){
+function startDirectExecution(o,selected,boostSelected,freeCount,freeCost,teamScore){
  const manpowerBefore=totalFreeSlots();
  selected.forEach(p=>assignPerson(p,o.duration));
+ boostSelected.forEach(p=>assignPerson(p,o.duration));
  const freeShare=freeCount/o.people;
  const freePenalty=freeCount?freeShare*10:0;
- const quality=clamp(teamScore+moraleQualityModifier()+Math.random()*12-6-freePenalty,42,98);
+ const qualityBonus=resourceBoostQualityBonus(o);
+ const quality=clamp(teamScore+qualityBonus+moraleQualityModifier()+Math.random()*12-6-freePenalty,42,98);
  if(freeCount){
    S.cash-=freeCost;S.yearSpend+=freeCost;S.profit-=freeCost;S.route.free+=freeCount;
    log(`执行期用了 ${freeCount} 个 Free，成本 ${fmt(freeCost)}。`,'muted');
  }
- S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,flavor:o.flavor,reputationValue:o.reputationValue,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
+ if(boostSelected.length){
+   log(`资源加码：${o.name} 额外投入 ${boostSelected.length} 名正式员工，项目质量预期 +${qualityBonus}。`,'good');
+ }
+ S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people+boostSelected.length,quality,resourceBoost:o.resourceBoost||0,boostPeople:boostSelected.length,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
  trackProject(o);
  log(`接下：${o.name}，案值 ${fmt(o.value)}。`,'good');
  S.opp=S.opp.filter(x=>x.id!==o.id);
@@ -796,11 +801,10 @@ function startDirectExecution(o,selected,freeCount,freeCost,teamScore){
  showManpowerDelta(manpowerBefore,manpowerAfter,`${o.name} 进入执行`);
  showProjectResult({won:true,type:o.type,name:o.name,value:o.value,cost:freeCost,pWin:null});
 }
-function finalizePitchExecution(o,selected,freeCount,mode,teamScore,supportMode='none'){
+function finalizePitchExecution(o,selected,boostSelected,freeCount,mode,teamScore){
  const manpowerBefore=totalFreeSlots();
  const freeShare=freeCount/o.people;
  let qualityPenalty=0;
- let reputationContinuityPenalty=0;
 
  if(mode==='free'){
    const executionFreeCost=executionFreeCostFor(o,freeCount);
@@ -811,23 +815,21 @@ function finalizePitchExecution(o,selected,freeCount,mode,teamScore,supportMode=
  }else{
    selected.forEach(p=>assignPerson(p,o.duration));
  }
+ extendPitchBoostAssignments(boostSelected,o.pitchWeeks||2,o.duration);
 
- if(supportMode==='external'&&o.pitchSupportPeople?.length){
-   const supportCost=+(o.pitchSupportPeople.length*freeWeeklyRate()*o.duration).toFixed(1);
-   S.cash-=supportCost;S.yearSpend+=supportCost;S.profit-=supportCost;S.route.free+=o.pitchSupportPeople.length;
-   qualityPenalty+=2.5;
-   reputationContinuityPenalty=1;
-   log(`Pitch Free 继续参与执行，合作成本 ${fmt(supportCost)}。`,'muted');
+ const qualityBonus=resourceBoostQualityBonus(o);
+ const quality=clamp(teamScore+qualityBonus+moraleQualityModifier()+Math.random()*14-7-qualityPenalty,42,98);
+ if(boostSelected.length){
+   log(`资源加码继续进入执行：额外 ${boostSelected.length} 人，项目质量预期 +${qualityBonus}。`,'good');
  }
-
- const quality=clamp(teamScore+moraleQualityModifier()+Math.random()*14-7-qualityPenalty,42,98);
- S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,flavor:o.flavor,reputationValue:o.reputationValue,reputationContinuityPenalty,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
+ S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people+boostSelected.length,quality,resourceBoost:o.resourceBoost||0,boostPeople:boostSelected.length,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
  trackProject(o);
  const manpowerAfter=totalFreeSlots();
  render();
  saveGame(false);
  showManpowerDelta(manpowerBefore,manpowerAfter,`${o.name} 开始执行`);
 }
+
 function budgetShrinkChance(){
  return economyPhase().shrink;
 }
@@ -878,43 +880,52 @@ function maybeShowBudgetShrink(o,onContinue){
 
 function takeProject(id,useFree=false){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
- const avail=available();
+ if((o.requiredReputation||0)>S.reputation)return;
+
+ const maxBoost=maxResourceBoostLevel(o);
+ if((o.resourceBoost||0)>maxBoost){
+   o.resourceBoost=maxBoost;
+   log(`${o.name} 的空闲人力变少，资源加码自动调整为 ${maxBoost}/2。`,'muted');
+ }
+
+ const avail=[...available()].sort((a,b)=>b.skill-a.skill);
  const internal=Math.min(avail.length,o.people);
  const freeCount=Math.max(0,o.people-internal);
  if(freeCount>0&&!useFree){showStaffingChoice(o,freeCount);return}
- const selected=[...avail].sort((a,b)=>b.skill-a.skill).slice(0,internal);
+
+ const selected=avail.slice(0,internal);
+ const boostCount=resourceBoostPeople(o);
+ const boostSelected=avail.slice(internal,internal+boostCount);
  const teamScore=selected.length?selected.reduce((a,p)=>a+p.skill,0)/selected.length:55;
  S.route[o.type]++;
 
- // 年框和散活直接进入执行，因此 Free 成本按完整执行周期计算。
  if(o.type!=='pitch'){
    const freeCost=freeCount?executionFreeCostFor(o,freeCount):0;
-   startDirectExecution(o,selected,freeCount,freeCost,teamScore);
+   startDirectExecution(o,selected,boostSelected,freeCount,freeCost,teamScore);
    return;
  }
 
- // Pitch 阶段独立计算：Free 只签 2–3 周，不占用完整执行周期。
  const freeShare=freeCount/o.people;
  const pitchFreeCost=freeCount?pitchFreeCostFor(o,freeCount):0;
- const match=projectMatch(o);
  const staffing=clamp((teamScore-72)*.25,-6,7);
- const supportBonus=match.supportBonus||0;
- const supportCost=o.pitchSupport?pitchSupportCost(o):0;
+ const resourceBonus=resourceBoostWinBonus(o);
  const freePenalty=freeShare>.5?-8:0;
  const inboundBonus=o.inbound?(o.inboundBonus||12):0;
  const reputationBonus=reputationEffects().pitchBonus;
  const moraleBonus=moralePerformanceModifier();
- const pWin=clamp(34+gameRules().baseWin+match.bonus+staffing+freePenalty+inboundBonus+reputationBonus+moraleBonus,8,92);
- // 自有员工参与比稿不产生额外现金成本。Pitch Free 和缺口 Free 才产生增量费用。
- const grossPitchCost=+(supportCost+pitchFreeCost).toFixed(1);
+ const pWin=clamp(34+gameRules().baseWin+resourceBonus+staffing+freePenalty+inboundBonus+reputationBonus+moraleBonus,8,92);
+ const grossPitchCost=+pitchFreeCost.toFixed(1);
 
+ if(boostSelected.length){
+   boostSelected.forEach(p=>assignPerson(p,o.pitchWeeks||2));
+   log(`资源加码：这次 Pitch 多压 ${boostSelected.length} 人，赢率 +${resourceBonus}%，赢稿后也会继续占用执行人力。`,'good');
+ }
  if(grossPitchCost>0){
    S.cash-=grossPitchCost;S.yearSpend+=grossPitchCost;S.profit-=grossPitchCost;
  }
- if(freeCount){S.route.free+=freeCount;log(`比稿期用了 ${freeCount} 个补位 Free，共 ${o.pitchWeeks} 周，成本 ${fmt(pitchFreeCost)}。`,'muted')}
- if(o.pitchSupport&&o.pitchSupportPeople?.length){
-   S.route.free+=o.pitchSupportPeople.length;
-   log(`另外补了 ${o.pitchSupportPeople.length} 位 Pitch Free，比稿成本 ${fmt(supportCost)}。`,'muted');
+ if(freeCount){
+   S.route.free+=freeCount;
+   log(`比稿期缺口用了 ${freeCount} 个 Free，共 ${o.pitchWeeks} 周，成本 ${fmt(pitchFreeCost)}。`,'muted');
  }
 
  const pitchFee=o.pitchFee||0;
@@ -937,43 +948,38 @@ function takeProject(id,useFree=false){
      S.opp.push(f);S.followups++;
      log('三连胜。现有客户顺手追加了一笔连带散活。','good');
    }
-   if(S.winStreak===5){
-     log('五连胜。新业务手感热得发烫，但声望还是要靠最后做出来的作品。','good');
-   }
+   if(S.winStreak===5)log('五连胜。新业务手感热得发烫，但声望还是要靠最后做出来的作品。','good');
  }else{
    S.losses++;S.lossStreak++;S.winStreak=0;
    const lossText=pitchFee>0
      ? (grossPitchCost>0
-        ? `输了：${o.name}。额外比稿投入 ${fmt(grossPitchCost)}，收到比稿费 ${fmt(pitchFee)}，净结果 ${netPitchCost>0?'-'+fmt(netPitchCost).replace('-',''):'+'+fmt(Math.abs(netPitchCost))}。`
-        : `输了：${o.name}。全用内部员工，没有额外比稿成本；另收到比稿费 ${fmt(pitchFee)}。`)
+        ? `输了：${o.name}。Free投入 ${fmt(grossPitchCost)}，收到比稿费 ${fmt(pitchFee)}，净结果 ${netPitchCost>0?'-'+fmt(netPitchCost).replace('-',''):'+'+fmt(Math.abs(netPitchCost))}。`
+        : `输了：${o.name}。没有额外现金比稿成本；另收到比稿费 ${fmt(pitchFee)}。`)
      : (grossPitchCost>0
-        ? `输了：${o.name}。额外比稿投入 ${fmt(grossPitchCost)}。`
-        : `输了：${o.name}。全用内部员工，没有额外现金损失。`);
+        ? `输了：${o.name}。Free投入 ${fmt(grossPitchCost)}。`
+        : `输了：${o.name}。没有额外现金损失，但资源加码的人这轮已经被占用。`);
    log(lossText,'bad');
    if(S.lossStreak>=3){S.lossStreak=0;maybeLeave()}
  }
 
  S.opp=S.opp.filter(x=>x.id!==id);
  render();
- if(!won)saveGame(false);
+ saveGame(false);
 
  showPitchSuspense(o,()=>showProjectResult({
    won,type:o.type,name:o.name,value:o.value,
-   cost:netPitchCost,grossCost:grossPitchCost,pitchFee,pWin,boost:supportBonus,inboundBonus,matchBonus:match.pitchBonus,reputationBonus,moraleBonus,staffing,freePenalty,
+   cost:netPitchCost,grossCost:grossPitchCost,pitchFee,pWin,boost:resourceBonus,inboundBonus,matchBonus:resourceBonus,reputationBonus,moraleBonus,staffing,freePenalty,
    afterClose:()=>{
      if(!won)return;
      const continueExecution=()=>{
-       const run=(supportMode='none')=>{
-         if(freeCount>0&&useFree)finalizePitchExecution(o,selected,freeCount,'free',teamScore,supportMode);
-         else finalizePitchExecution(o,selected,0,'internal',teamScore,supportMode);
-       };
-       if(o.pitchSupport&&o.pitchSupportPeople?.length)showPitchSupportRetentionChoice(o,run);
-       else run('none');
+       if(freeCount>0&&useFree)finalizePitchExecution(o,selected,boostSelected,freeCount,'free',teamScore);
+       else finalizePitchExecution(o,selected,boostSelected,0,'internal',teamScore);
      };
      maybeShowBudgetShrink(o,continueExecution);
    }
  }));
 }
+
 function showPitchSuspense(o,onDone){
  const existing=document.getElementById('pitchSuspenseModal'); if(existing)existing.remove();
  const common=[
