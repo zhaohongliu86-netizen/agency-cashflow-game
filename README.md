@@ -1,5 +1,9 @@
 # 广告公司模拟器
 
+## 在线试玩
+
+**[点这里直接开始玩](https://zhaohongliu86-netizen.github.io/agency-cashflow-game/)**
+
 一直想知道，如果真的经营一家广告公司，自己会是什么样的老板。
 
 所以我做了这个小游戏。
