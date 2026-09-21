@@ -126,9 +126,9 @@ function makeOpportunity(forced=''){
  return {id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,boost:false};
 }
 function genOpp(){
- const n=DIFF[S.diff].opp + (S.reputation>=70?1:0); S.opp=[]; for(let i=0;i<n;i++) S.opp.push(makeOpportunity());
- if(S.team.length<20) S.opp=S.opp.filter(o=>o.value<500);
- if(S.team.length<30) S.opp=S.opp.filter(o=>o.value<1000);
+ const n=DIFF[S.diff].opp + (S.reputation>=70?1:0);
+ S.opp=[];
+ for(let i=0;i<n;i++)S.opp.push(makeOpportunity());
 }
 function log(msg,cls=''){S.log.unshift({msg,cls}); S.log=S.log.slice(0,60)}
 function executionFreeCostFor(o,freeCount){
