@@ -206,7 +206,7 @@ function openingProjects(scaleKey){
      ['在做 · 大型新品战役','pitch',900,.35,36,8,78,'creative','execution']
    ]
  };
- return (defs[scaleKey]||defs.growth20).map(x=>({
+ return (defs[scaleKey]||defs.growth20).map(x=>ensureProjectNeeds({
    id:uid(),name:x[0],type:x[1],value:x[2],margin:x[3],weeks:x[4],left:x[4],people:x[5],quality:x[6],
    needPrimary:x[7],needSecondary:x[8],legacy:true
  }));
@@ -463,9 +463,8 @@ function createInboundOpportunity(){
  base.inboundBonus=12;
  base.name='主动邀约 · '+pick(['年度品牌战役','新品整合传播','品牌焕新项目','下一年度核心战役']);
  delete base.needPrimary;delete base.needSecondary;ensureProjectNeeds(base);
- const fameMargin=reputationEffects().marginBonus;
- base.fameMarginBonus=fameMargin;
- base.margin=Math.min(.54,+(base.margin+.02+fameMargin).toFixed(2));
+ base.fameMarginBonus=base.reputationMarginBonus||0;
+ base.margin=Math.min(.60,+(base.margin+.02).toFixed(2));
  base.people=requiredPeople('pitch',base.value,base.duration);
  if(S.records)S.records.inboundOffers++;
  return base;
@@ -579,12 +578,49 @@ function needProfileFor(type,name=''){
  if(type==='small')return ['creative','execution'];
  return ['creative','strategy'];
 }
+function projectFlavor(o){
+ const needs=[o.needPrimary,o.needSecondary];
+ const prestige=needs.filter(k=>k==='strategy'||k==='creative').length;
+ const delivery=needs.filter(k=>k==='service'||k==='execution').length;
+ if(prestige===2)return 'prestige';
+ if(delivery===2)return 'delivery';
+ return 'mixed';
+}
+function calculateProjectReputationValue(o){
+ const real=realProjectValue(o.value||0);
+ const sizeBase=real>=3000?5:real>=1000?4:real>=500?3:real>=150?2:1;
+ const needs=[o.needPrimary,o.needSecondary];
+ const prestige=needs.filter(k=>k==='strategy'||k==='creative').length;
+ const delivery=needs.filter(k=>k==='service'||k==='execution').length;
+ let value=sizeBase+prestige*2-(delivery===2?1:0)-(o.type==='retainer'?1:0);
+ return clamp(Math.round(value),1,9);
+}
 function ensureProjectNeeds(o){
  if(!o)return o;
  if(!o.needPrimary||!o.needSecondary){
    const [primary,secondary]=needProfileFor(o.type,o.name||'');
    o.needPrimary=primary;o.needSecondary=secondary;
  }
+ if(!Number.isFinite(o.reputationValue))o.reputationValue=calculateProjectReputationValue(o);
+ return o;
+}
+function applyProjectEconomics(o){
+ ensureProjectNeeds(o);
+ if(o.economicsApplied)return o;
+ const flavor=projectFlavor(o);
+ if(flavor==='delivery'){
+   o.value=Math.min(unlockCap(),Math.max(1,Math.round(o.value*1.15)));
+   o.margin=+(Math.max(.16,o.margin-.04)).toFixed(2);
+ }else if(flavor==='prestige'){
+   o.value=Math.max(1,Math.round(o.value*.88));
+   o.margin=+(Math.min(.58,o.margin+.05)).toFixed(2);
+ }
+ const repMargin=reputationEffects().marginBonus;
+ o.reputationMarginBonus=repMargin;
+ o.margin=+clamp(o.margin+repMargin,.14,.60).toFixed(2);
+ o.people=requiredPeople(o.type,o.value,o.duration);
+ o.reputationValue=calculateProjectReputationValue(o);
+ o.economicsApplied=true;
  return o;
 }
 function projectMatch(o){
@@ -676,8 +712,9 @@ function makeOpportunity(forced=''){
  const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:realValue>=1000?['大型整合Pitch','年度核心战役Pitch','超级整合Pitch','品牌焕新Pitch']:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch']};
  const pitchWeeks=type==='pitch'?pick([2,2,2,3]):0;
  const pitchFee=(type==='pitch'&&!S.scale&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0;
- const opportunity={id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,boost:false};
- return ensureProjectNeeds(opportunity);
+ const opportunity={id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,pitchSupport:false};
+ ensureProjectNeeds(opportunity);
+ return applyProjectEconomics(opportunity);
 }
 function renewalChance(morale){
  let base=morale<75?0:morale<85?.25:morale<95?.45:.65;
@@ -698,6 +735,7 @@ function maybeCreateRenewal(p){
  const isBig=realProjectValue(value)>=1000;
  const type=isBig?'pitch':'retainer';
  const baseName=String(p.name||'老客户').replace(/^续约机会 · |^续约比稿 · /,'');
+ const repMargin=reputationEffects().marginBonus;
  const renewal={
    id:uid(),
    name:`${isBig?'续约比稿':'续约机会'} · ${baseName}`,
@@ -705,12 +743,13 @@ function maybeCreateRenewal(p){
    value,
    people:requiredPeople(type,value,duration),
    duration,
-   margin,
+   margin:+clamp(margin+repMargin,.14,.60).toFixed(2),
    pitchWeeks:isBig?pick([2,2,3]):0,
    pitchFee:(isBig&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0,
    freeAllowed:true,
-   boost:false,
+   pitchSupport:false,
    renewal:true,
+   reputationMarginBonus:repMargin,
    previousMargin:p.margin
  };
  ensureProjectNeeds(renewal);
