@@ -8,16 +8,6 @@ const DIFF={
   2016:{name:'2016',label:'最容易',desc:'预算更宽松，机会更多，行业还相信增长。',tax:.25,deal:1.18,baseWin:5,opp:5,startCash:160},
   2026:{name:'2026',label:'最难',desc:'钱少、要求多、Pitch多，客户也会问AI能不能先来一版。',tax:.25,deal:.86,baseWin:-5,opp:3,startCash:100}
 };
-const CURRENT_RULES={tax:.25,deal:1,baseWin:0,opp:4};
-const START_SCALES={
- boutique6:{key:'boutique6',name:'6人创意小店',size:6,startCash:90,startRep:30,startMorale:72,opp:3,mixShift:[.15,.25],desc:'人少、现金压力低。更容易吃小单和创意型Pitch，靠作品与效率长大。',counts:{策略:1,阿康:1,文案:1,美术:1,制片:1}},
- growth20:{key:'growth20',name:'20人成长型Agency',size:20,startCash:260,startRep:45,startMorale:68,opp:4,mixShift:[0,.08],desc:'标准经营盘。已经能摸中型客户，但每次扩张都会明显增加固定成本。',counts:{策略:2,阿康:5,文案:4,美术:4,制片:4}},
- integrated40:{key:'integrated40',name:'40人中型综合Agency',size:40,startCash:620,startRep:58,startMorale:64,opp:5,mixShift:[-.08,-.02],desc:'开局就背着大团队和大客户。业务更大，工资也更像一堵墙。',counts:{策略:4,阿康:11,文案:9,美术:8,制片:7}}
-};
-function startScale(key=S?.scale){return START_SCALES[key]||START_SCALES.growth20}
-function gameRules(){return DIFF[S?.diff]||DIFF[2026]}
-
-
 // 每8年换一轮行业气候。30年模式会经历前四段；后两段保留给未来继续扩年限。
 const ECON_PHASES=[
  {key:'good1',label:'景气',deal:1.12,opp:1,mix:[.20,.30],shrink:.12,renewal:.05,salary:.06,
@@ -67,35 +57,9 @@ function salaryGrowthRate(year=S?.year||1){return economyPhase(year).salary||0}
 const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
 const roles=['策略','创意','阿康','制片'];
 
-const CAPABILITY_META={
- strategy:{label:'策略力',effect:'Pitch判断'},
- creative:{label:'创意力',effect:'作品声量'},
- service:{label:'服务力',effect:'续约'},
- execution:{label:'资源执行力',effect:'复杂交付'}
-};
-const ROLE_AFFINITY={
- 老板:{strategy:.70,creative:.90,service:.45,execution:.25},
- 策略:{strategy:1,creative:.25,service:.15,execution:.10},
- 阿康:{strategy:.20,creative:.10,service:1,execution:.30},
- 创意:{strategy:.16,creative:1,service:.10,execution:.18},
- 文案:{strategy:.20,creative:1,service:.10,execution:.10},
- 美术:{strategy:.10,creative:1,service:.10,execution:.25},
- 制片:{strategy:.10,creative:.10,service:.25,execution:1}
-};
-const CAPABILITY_TARGET={strategy:.40,creative:.36,service:.32,execution:.28};
-function baseRole(role=''){
- if(role==='老板')return '老板';
- if(role.includes('策略'))return '策略';
- if(role.includes('客户')||role.includes('阿康'))return '阿康';
- if(role.includes('创意'))return '创意';
- if(role.includes('文案'))return '文案';
- if(role.includes('美术'))return '美术';
- if(role.includes('制片')||role.includes('制作'))return '制片';
- return '阿康';
-}
 function roleTitle(role,skill){
  if(role==='策略')return skill>=84?'策略总监':'策略';
- if(role==='阿康')return skill>=84?'客户总监':'阿康';
+ if(role==='阿康')return skill>=84?'客户总监':'客户经理';
  if(role==='创意')return skill>=84?'创意总监':'创意';
  if(role==='文案')return skill>=84?'文案总监':'文案';
  if(role==='美术')return skill>=84?'美术总监':'美术';
@@ -103,22 +67,10 @@ function roleTitle(role,skill){
  return role;
 }
 function roleSpec(role){return role==='创意'||role==='文案'||role==='美术'?'创意':role==='策略'?'品牌':role==='阿康'?'客户':'制作'}
-function starterSkill(scaleKey,role,index){
- const base={策略:73,阿康:70,创意:73,文案:73,美术:73,制片:71}[role]||72;
- const bias=scaleKey==='boutique6'?4:scaleKey==='growth20'?1:-1;
- const senior=index===0?(scaleKey==='boutique6'?5:10):(index>0&&index%6===0?6:0);
- const orgBias=
-   scaleKey==='integrated40'&&(role==='阿康'||role==='制片')?10:
-   scaleKey==='integrated40'&&role==='策略'?5:
-   scaleKey==='growth20'&&role==='策略'?5:
-   scaleKey==='growth20'&&(role==='阿康'||role==='制片')?2:0;
- return clamp(base+bias+senior-(index%4)*2+orgBias,65,92);
-}
 function salaryFor(role,skill){
  const seniorPremium=skill>=84?0.45:0;
  return +((0.9+(skill-60)*0.055+(role==='策略'?0.35:role==='制片'?0.15:role==='创意'?0.12:0)+seniorPremium)*salaryMarketIndex()).toFixed(1);
 }
-
 function buildStandardStarterTeam(){
  const defs=[
    ['老板','老板','创意',3.0,88],
@@ -155,41 +107,6 @@ function openingProjectsForEra(diff){
    return o;
  });
 }
-function buildStarterTeam(scaleKey){
- const profile=START_SCALES[scaleKey]||START_SCALES.growth20;
- const team=[{id:uid(),name:'老板',role:'老板',spec:'创意',salary:+(3*salaryMarketIndex()).toFixed(1),skill:88,slots:[],tenure:2}];
- for(const [role,count] of Object.entries(profile.counts)){
-   for(let i=0;i<count;i++){
-     const skill=starterSkill(scaleKey,role,i),label=role==='阿康'?'客户':role;
-     team.push({id:uid(),name:`${label}${i+1}`,role:roleTitle(role,skill),spec:roleSpec(role),salary:salaryFor(role,skill),skill,slots:[],tenure:2});
-   }
- }
- return team;
-}
-function companyCapabilities(team=S?.team||[]){
- const result={},size=Math.max(1,team.length);
- for(const key of Object.keys(CAPABILITY_META)){
-   let sumW=0,sumSkill=0;
-   for(const p of team){
-     const w=(ROLE_AFFINITY[baseRole(p.role)]||ROLE_AFFINITY.阿康)[key]||0;
-     sumW+=w;sumSkill+=(Number(p.skill)||65)*w;
-   }
-   const avg=sumW?sumSkill/sumW:60;
-   const coverage=clamp(sumW/(size*CAPABILITY_TARGET[key]),0,1.15);
-   const structureBias=size<=10
-     ? ({strategy:3,creative:7,service:-5,execution:-12}[key]||0)
-     : size>=30
-       ? ({strategy:0,creative:-3,service:5,execution:8}[key]||0)
-       : 0;
-   result[key]=clamp(Math.round(35+(avg-60)*1.25+coverage*18+structureBias),35,98);
- }
- return result;
-}
-function capabilityDelta(candidate){
- const before=companyCapabilities(),after=companyCapabilities([...(S?.team||[]),candidate]),delta={};
- for(const k of Object.keys(CAPABILITY_META))delta[k]=after[k]-before[k];
- return delta;
-}
 
 function reputationLabel(score=S?.reputation||0){
  if(score>=90)return '行业顶流';
@@ -218,38 +135,6 @@ function reputationImpactText(){
    : '人才市场正常';
  return `${later} · ${talent} · 主动邀约 ${Math.round(inboundChance()*100)}%`;
 }
-function agencyType(){
- const caps=companyCapabilities();
- const entries=Object.entries(caps).sort((a,b)=>b[1]-a[1]);
- if(entries[0][1]-entries[3][1]<=5)return '综合型Agency';
- const map={strategy:'策略型Agency',creative:'创意热店',service:'客户服务型Agency',execution:'整合执行型Agency'};
- return map[entries[0][0]]||'综合型Agency';
-}
-
-function openingProjects(scaleKey){
- const defs={
-   boutique6:[
-     ['老客户 · 品牌日常顾问','retainer',90,.36,24,2,74,'service','creative'],
-     ['在做 · 产品内容项目','small',35,.50,12,1,78,'creative','execution']
-   ],
-   growth20:[
-     ['老客户 · 年度品牌服务','retainer',380,.31,48,5,75,'service','strategy'],
-     ['老客户 · 社媒与内容','retainer',220,.34,36,4,73,'creative','service'],
-     ['在做 · 新品传播项目','pitch',260,.38,24,4,77,'creative','strategy']
-   ],
-   integrated40:[
-     ['核心客户 · 年度整合服务','retainer',1000,.28,48,8,76,'service','execution'],
-     ['核心客户 · 品牌年度顾问','retainer',650,.30,48,7,74,'strategy','service'],
-     ['在做 · 大型新品战役','pitch',900,.35,36,8,78,'creative','execution']
-   ]
- };
- return (defs[scaleKey]||defs.growth20).map(x=>ensureProjectNeeds({
-   id:uid(),name:x[0],type:x[1],value:x[2],margin:x[3],weeks:x[4],left:x[4],people:x[5],quality:x[6],
-   needPrimary:x[7],needSecondary:x[8],legacy:true
- }));
-}
-
-
 let S=null;
 let gossipTimer=null;
 const STANDARD_YEARS=12;
@@ -268,14 +153,10 @@ function readSavedGame(){
 function normalizeLoadedGame(data){
  const defaults={
    pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
-   route:{pitch:0,retainer:0,small:0,free:0},yearStartProfit:0,scale:'growth20',
+   route:{pitch:0,retainer:0,small:0,free:0},yearStartProfit:0,
    records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
  };
  const loaded=Object.assign(defaults,data);
- if(!data.scale||!START_SCALES[data.scale]){
-   const n=(loaded.team||[]).length;
-   loaded.scale=n<=10?'boutique6':n>=32?'integrated40':'growth20';
- }
  loaded.route=Object.assign({pitch:0,retainer:0,small:0,free:0},loaded.route||{});
  loaded.records=Object.assign({maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0},loaded.records||{});
  if(!Number.isFinite(loaded.records.maxQuarterProfit))loaded.records.maxQuarterProfit=-Infinity;
@@ -499,8 +380,7 @@ function createInboundOpportunity(){
  const base=makeOpportunity('pitch');
  base.inbound=true;
  base.inboundBonus=12;
- base.name='主动邀约 · '+pick(['年度品牌战役','新品整合传播','品牌焕新项目','下一年度核心战役']);
- delete base.needPrimary;delete base.needSecondary;ensureProjectNeeds(base);
+ base.name='主动邀约 · '+base.name;
  base.fameMarginBonus=base.reputationMarginBonus||0;
  base.margin=Math.min(.60,+(base.margin+.02).toFixed(2));
  base.people=requiredPeople('pitch',base.value,base.duration);
