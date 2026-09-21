@@ -298,38 +298,13 @@ function capacity(p){
 }
 function seniorCount(){return S.team.filter(isSenior).length}
 function seniorRatio(){return S.team.length?seniorCount()/S.team.length:0}
-function requiredMorale(value){
- const real=realProjectValue(value);
- if(real>=3000)return 80;
- if(real>=1000)return 70;
- if(real>=500)return 60;
- return 0;
+function moralePerformanceModifier(){
+ return clamp((S.morale-70)*.12,-5,4);
 }
-function moraleGateInfo(value){
- const required=requiredMorale(value);
- return {required,current:S.morale,ok:required===0||S.morale>=required};
+function moraleQualityModifier(){
+ return clamp((S.morale-70)*.10,-4,3);
 }
-function showMoraleGate(o){
- const info=moraleGateInfo(o.value);
- const old=document.getElementById('moraleGateModal');if(old)old.remove();
- const host=document.createElement('div');
- host.className='overlay senior-gate-overlay';
- host.id='moraleGateModal';
- host.innerHTML=`<div class="modal senior-gate-modal">
-   <div class="senior-gate-kicker">TEAM CHECK</div>
-   <div class="big">这单很大，但团队现在扛不住。</div>
-   <p><b>${o.name}</b> 案值 ${fmt(o.value)}，需要团队士气至少 <b>${info.required}</b>。</p>
-   <div class="senior-gate-numbers">
-     <div><span>当前士气</span><b>${info.current}</b><small>团队状态</small></div>
-     <strong>→</strong>
-     <div><span>最低要求</span><b>${info.required}</b><small>大项目门槛</small></div>
-   </div>
-   <p class="muted">奖金、年会和稳定经营能把士气带回来；裁员和长期亏待团队会让大项目更难接。裁掉初级员工不会再提高接单资格。</p>
-   <button class="btn" id="closeMoraleGate">先把团队状态拉回来</button>
- </div>`;
- document.body.appendChild(host);
- host.querySelector('#closeMoraleGate').onclick=()=>host.remove();
-}
+
 function normalizePerson(p){
  if(!Array.isArray(p.slots))p.slots=p.busy>0?[p.busy]:[];
  delete p.busy;
@@ -740,7 +715,6 @@ function pitchFreeCostFor(o,freeCount){
 }
 function requestProject(id){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
- if(!moraleGateInfo(o.value).ok){showMoraleGate(o);return}
  const lack=Math.max(0,o.people-available().length);
  if(lack>0){showStaffingChoice(o,lack);return}
  takeProject(id,false);
@@ -848,7 +822,7 @@ function startDirectExecution(o,selected,freeCount,freeCost,teamScore){
  selected.forEach(p=>assignPerson(p,o.duration));
  const freeShare=freeCount/o.people;
  const match=projectMatch(o);
- const quality=clamp(teamScore*.55+match.score*.45+Math.random()*12-4-(freeCount?freeShare*10:0),42,98);
+ const quality=clamp(teamScore*.55+match.score*.45+moraleQualityModifier()+Math.random()*12-4-(freeCount?freeShare*10:0),42,98);
  if(freeCount){
    S.cash-=freeCost;S.yearSpend+=freeCost;S.profit-=freeCost;S.route.free+=freeCount;
    log(`执行期用了 ${freeCount} 个 Free，成本 ${fmt(freeCost)}。`,'muted');
@@ -879,7 +853,7 @@ function finalizePitchExecution(o,selected,freeCount,mode,teamScore){
  }
 
  const match=projectMatch(o);
- const quality=clamp(teamScore*.55+match.score*.45+Math.random()*14-5+(o.boost?3:0)-qualityPenalty,42,98);
+ const quality=clamp(teamScore*.55+match.score*.45+moraleQualityModifier()+Math.random()*14-5+(o.boost?3:0)-qualityPenalty,42,98);
  S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,needPrimary:o.needPrimary,needSecondary:o.needSecondary,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
  trackProject(o);
  const manpowerAfter=totalFreeSlots();
@@ -937,7 +911,6 @@ function maybeShowBudgetShrink(o,onContinue){
 
 function takeProject(id,useFree=false){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
- if(!moraleGateInfo(o.value).ok){showMoraleGate(o);return}
  const avail=available();
  const internal=Math.min(avail.length,o.people);
  const freeCount=Math.max(0,o.people-internal);
@@ -962,7 +935,7 @@ function takeProject(id,useFree=false){
  const freePenalty=freeShare>.5?-8:0;
  const inboundBonus=o.inbound?(o.inboundBonus||12):0;
  const reputationBonus=reputationEffects().pitchBonus;
- const moraleBonus=clamp((S.morale-60)*.08,-4,4);
+ const moraleBonus=moralePerformanceModifier();
  const pWin=clamp(34+gameRules().baseWin+match.bonus+staffing+boost+freePenalty+inboundBonus+reputationBonus+moraleBonus,8,92);
  // 自有员工参与比稿不产生额外现金成本。只有 Free 和主动加码才产生增量费用。
  const boostCost=o.boost?Math.max(projectPriceIndex(),Math.min(18*projectPriceIndex(),o.value*.01)):0;
@@ -1709,7 +1682,7 @@ function render(){
    <div class="stat"><b>${fmt(S.cash)}</b><span>现金</span></div>
    <div class="stat"><b>${S.team.length}人</b><span>团队</span><small>${band}人档</small></div>
    <div class="stat"><b>${freeSlotsNow}/${capacityNow}</b><span>可用人力</span><small>${usedNow}槽占用</small></div>
-   <div class="stat"><b>${S.morale}</b><span>士气</span></div>
+   <div class="stat" title="士气影响Pitch发挥、项目质量、续约和离职，但不会限制接单。"><b>${S.morale}</b><span>士气</span></div>
    <div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格 ×${projectPriceIndex().toFixed(2)}</small></div>
  </div>
  <div class="grid"><main class="panel"><h2>${isAnnualMode()?'这一年，生意自己不会长出来':'这季度，生意自己不会长出来'}</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">'+emptyOpportunityCopy+'</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
@@ -1733,8 +1706,6 @@ function durationLabel(weeks){
 function cardHTML(o){
  const lack=Math.max(0,o.people-available().length);
  const isPitch=o.type==='pitch';
- const moraleGate=moraleGateInfo(o.value);
- const moraleLocked=!moraleGate.ok;
  const staffingNote=lack?` · 缺 ${lack} 人`:'';
  const match=projectMatch(o);
  const secondLine=isPitch
@@ -1746,14 +1717,11 @@ function cardHTML(o){
    : `周期 ${durationLabel(o.duration)}（${o.duration}周）`;
  const internalUse=Math.min(o.people,available().length);
  const remaining=Math.max(0,totalFreeSlots()-internalUse);
- const moraleLine=moraleLocked
-   ? `<div class="senior-requirement senior-short">士气不足：需要 ${moraleGate.required} · 当前 ${moraleGate.current}</div>`
-   : '';
  const fameLine=o.inbound&&o.fameMarginBonus
    ? `<span class="fame-benefit">声望红利：毛利率 +${Math.round(o.fameMarginBonus*100)}pt</span>`
    : '';
  const expectedMargin=o.value*o.margin;
- return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div><div class="project-fit ${match.score>=76?'fit-good':match.score<67?'fit-bad':''}"><span>项目更看重</span><b>${projectNeedLabel(o)}</b><strong>${match.label} · ${match.score}</strong></div><div class="meta">${secondLine}${feeLine}${fameLine}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'团队士气不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码提案 · 胜率 +5~12%'}</button>`:''}</div></div>`
+ return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div><div class="project-fit ${match.score>=76?'fit-good':match.score<67?'fit-bad':''}"><span>项目更看重</span><b>${projectNeedLabel(o)}</b><strong>${match.label} · ${match.score}</strong></div><div class="meta">${secondLine}${feeLine}${fameLine}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加码提案 · 胜率 +5~12%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
