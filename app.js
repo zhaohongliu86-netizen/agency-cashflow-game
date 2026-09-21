@@ -55,18 +55,18 @@ function realProjectValue(value){return value/projectPriceIndex()}
 function salaryGrowthRate(year=S?.year||1){return economyPhase(year).salary||0}
 
 const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
-const roles=['策略','创意','阿康','制片'];
+const roles=['策略','创意','客户','制片'];
 
 function roleTitle(role,skill){
  if(role==='策略')return skill>=84?'策略总监':'策略';
- if(role==='阿康')return skill>=84?'客户总监':'客户经理';
+ if(role==='客户'||role==='阿康')return skill>=84?'客户总监':'客户经理';
  if(role==='创意')return skill>=84?'创意总监':'创意';
  if(role==='文案')return skill>=84?'文案总监':'文案';
  if(role==='美术')return skill>=84?'美术总监':'美术';
  if(role==='制片')return skill>=84?'资深制片':'制片';
  return role;
 }
-function roleSpec(role){return role==='创意'||role==='文案'||role==='美术'?'创意':role==='策略'?'品牌':role==='阿康'?'客户':'制作'}
+function roleSpec(role){return role==='创意'||role==='文案'||role==='美术'?'创意':role==='策略'?'品牌':(role==='客户'||role==='阿康')?'客户':'制作'}
 function salaryFor(role,skill){
  const seniorPremium=skill>=84?0.45:0;
  return +((0.9+(skill-60)*0.055+(role==='策略'?0.35:role==='制片'?0.15:role==='创意'?0.12:0)+seniorPremium)*salaryMarketIndex()).toFixed(1);
@@ -746,8 +746,8 @@ function hire(){
    : `声望带来的招聘条件：候选能力 ${market.talentSkill>0?'+':''}${market.talentSkill} · 薪资市场 ×${market.talentPay.toFixed(2)}`;
  const host=document.createElement('div');host.className='overlay';host.id='hireModal';
  host.innerHTML=`<div class="modal hire-modal">
-   <div class="big">这次想补哪种能力？</div>
-   <p class="muted">行业声望 ${S.reputation} · ${talentCopy}。现在招聘只看人有多强、工资有多贵，职位不再给隐藏能力加成。</p>
+   <div class="big">这次招谁？</div>
+   <p class="muted">行业声望 ${S.reputation} · ${talentCopy}。看能力、看工资，也看你现在养不养得起。</p>
    <div class="hire-candidates">
      ${candidates.map((p,i)=>`<div class="hire-card">
        <div class="hire-role">${p.role}</div>
@@ -1110,7 +1110,7 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
       ? `额外投入 ${fmt(grossCost)} · 比稿费 +${fmt(pitchFee)} · 净结果 ${cost>0?'-'+fmt(cost).replace('-',''):'+'+fmt(Math.abs(cost))}`
       : `全用内部员工 · 无额外比稿成本 · 比稿费 +${fmt(pitchFee)}`)
    : (grossCost>0?`本次额外投入 ${fmt(grossCost)}`:'全用内部员工 · 无额外比稿成本');
- const boostLine=boost>0?` · Pitch Free +${boost}%`:'';
+ const boostLine='';
  const capabilityLine=`${matchBonus?`Pitch Free +${matchBonus}% · `:''}声望信任 ${reputationBonus>=0?'+':''}${reputationBonus}% · 团队 ${staffing>=0?'+':''}${staffing.toFixed(0)}%${moraleBonus?` · 士气 ${moraleBonus>=0?'+':''}${moraleBonus.toFixed(0)}%`:''}${freePenalty?` · Free ${freePenalty}%`:''}`;
  host.innerHTML=`<div class="pitch-result-card">
    <div class="pitch-result-kicker">${tier?tier.kicker:'PITCH RESULT'}</div>
@@ -1119,7 +1119,7 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
    <div class="pitch-result-project">${name}</div>
    <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:(cost>0?`额外成本 ${fmt(cost)}`:cost<0?`比稿净收入 ${fmt(Math.abs(cost))}`:'没有额外现金损失')}</div>
    <div class="pitch-result-comment">${pitchResultFeedback(won)}</div>
-   ${won?'<div class="pitch-fame-note">赢稿本身不增加声望。项目交付后，才按作品质量与项目体量结算。</div>':''}
+   ${won?'<div class="pitch-fame-note">赢稿本身不增加声望。项目交付后，按项目声誉值与最终质量结算。</div>':''}
    <div class="pitch-result-meta">${feeLine}<br><b>最终胜率 ${pWin.toFixed(0)}%</b> · ${capabilityLine}${inboundBonus?` · 主动邀约 +${inboundBonus}%`:''}${boostLine}${streak?` · ${streak}`:''}</div>
    <button class="btn pitch-result-button" id="closePitchResult">${won?'安排执行人力':'认了，继续经营'}</button>
  </div>`;
