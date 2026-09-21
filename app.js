@@ -376,6 +376,23 @@ function trackProject(o){
  S.records.projects++;
  S.records.maxDeal=Math.max(S.records.maxDeal,o.value||0);
 }
+
+function projectReputationDelta(p){
+ const real=realProjectValue(p.value||0),q=Number(p.quality)||0;
+ let weight=real>=3000?5:real>=1000?4:real>=500?3:real>=150?2:1;
+ if(p.type==='retainer')weight=Math.max(1,weight-1);
+ if(q>=92)return weight;
+ if(q>=85)return Math.max(1,Math.ceil(weight/2));
+ if(q<52)return -2;
+ if(q<60)return -1;
+ return 0;
+}
+function applyProjectReputation(p){
+ const delta=projectReputationDelta(p);
+ if(!delta)return;
+ S.reputation=clamp(S.reputation+delta,0,100);
+ log(`${p.name} 完成，项目质量 ${Math.round(p.quality)}。行业声望 ${delta>0?'+':''}${delta}。`,delta>0?'good':'bad');
+}
 function updateTeamRecord(){
  if(S&&S.records)S.records.maxTeam=Math.max(S.records.maxTeam,S.team.length);
 }
@@ -415,6 +432,7 @@ function createInboundOpportunity(){
  base.inbound=true;
  base.inboundBonus=12;
  base.name='主动邀约 · '+pick(['年度品牌战役','新品整合传播','品牌焕新项目','下一年度核心战役']);
+ delete base.needPrimary;delete base.needSecondary;ensureProjectNeeds(base);
  base.margin=Math.min(.5,+(base.margin+.02).toFixed(2));
  base.people=requiredPeople('pitch',base.value,base.duration);
  if(S.records)S.records.inboundOffers++;
@@ -787,14 +805,14 @@ function startDirectExecution(o,selected,freeCount,freeCost,teamScore){
  const manpowerBefore=totalFreeSlots();
  selected.forEach(p=>assignPerson(p,o.duration));
  const freeShare=freeCount/o.people;
- const quality=clamp(teamScore+Math.random()*12-4-(freeCount?freeShare*10:0),42,98);
+ const match=projectMatch(o);
+ const quality=clamp(teamScore*.55+match.score*.45+Math.random()*12-4-(freeCount?freeShare*10:0),42,98);
  if(freeCount){
    S.cash-=freeCost;S.yearSpend+=freeCost;S.profit-=freeCost;S.route.free+=freeCount;
    log(`执行期用了 ${freeCount} 个 Free，成本 ${fmt(freeCost)}。`,'muted');
  }
- S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
+ S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,needPrimary:o.needPrimary,needSecondary:o.needSecondary,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
  trackProject(o);
- S.reputation=clamp(S.reputation+(quality>84?2:quality<60?-2:0),0,100);
  log(`接下：${o.name}，案值 ${fmt(o.value)}。`,'good');
  S.opp=S.opp.filter(x=>x.id!==o.id);
  const manpowerAfter=totalFreeSlots();
@@ -826,10 +844,10 @@ function finalizePitchExecution(o,selected,freeCount,mode,teamScore){
    selected.forEach(p=>assignPerson(p,o.duration));
  }
 
- const quality=clamp(teamScore+Math.random()*14-5+(o.boost?4:0)-qualityPenalty,42,98);
- S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
+ const match=projectMatch(o);
+ const quality=clamp(teamScore*.55+match.score*.45+Math.random()*14-5+(o.boost?3:0)-qualityPenalty,42,98);
+ S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,needPrimary:o.needPrimary,needSecondary:o.needSecondary,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
  trackProject(o);
- S.reputation=clamp(S.reputation+(quality>82?3:quality<62?-2:1),0,100);
  const manpowerAfter=totalFreeSlots();
  render();
  saveGame(false);
@@ -875,10 +893,10 @@ function showPostPitchExecutionChoice(o,selected,freeCount,teamScore){
    actual.forEach(p=>{S.team.push(p);assignPerson(p,o.duration)});
    showScaleUpgrade(before,S.team.length);
    selected.forEach(p=>assignPerson(p,o.duration));
-   const quality=clamp(teamScore+Math.random()*14-5+(o.boost?4:0),42,98);
-   S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
+   const match=projectMatch(o);
+   const quality=clamp(teamScore*.55+match.score*.45+Math.random()*14-5+(o.boost?3:0),42,98);
+   S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,needPrimary:o.needPrimary,needSecondary:o.needSecondary,legacy:false,inbound:!!o.inbound,renewal:!!o.renewal});
    trackProject(o);
-   S.reputation=clamp(S.reputation+(quality>82?3:quality<62?-2:1),0,100);
    log(`赢稿后把 ${freeCount} 个 Free 转正。转正成本 ${fmt(actualFee)}，每月固定工资 +${fmt(actualMonthly)}。`,'good');
    const manpowerAfter=totalFreeSlots();
    render();
@@ -959,11 +977,14 @@ function takeProject(id,useFree=false){
  // Pitch 阶段独立计算：Free 只签 2–3 周，不占用完整执行周期。
  const freeShare=freeCount/o.people;
  const pitchFreeCost=freeCount?pitchFreeCostFor(o,freeCount):0;
- const staffing=clamp((teamScore-72)*.35,-8,10);
- const boost=o.boost?pick(Array.from({length:45},(_,i)=>i+5)):0;
+ const match=projectMatch(o);
+ const staffing=clamp((teamScore-72)*.25,-6,7);
+ const boost=o.boost?pick([5,6,7,8,9,10,11,12]):0;
  const freePenalty=freeShare>.5?-8:0;
  const inboundBonus=o.inbound?(o.inboundBonus||12):0;
- const pWin=clamp(35+DIFF[S.diff].baseWin+staffing+boost+freePenalty+inboundBonus+clamp((S.reputation-50)*.18,-7,8),8,92);
+ const reputationBonus=clamp((S.reputation-50)*.12,-5,6);
+ const moraleBonus=clamp((S.morale-60)*.08,-4,4);
+ const pWin=clamp(34+gameRules().baseWin+match.bonus+staffing+boost+freePenalty+inboundBonus+reputationBonus+moraleBonus,8,92);
  // 自有员工参与比稿不产生额外现金成本。只有 Free 和主动加码才产生增量费用。
  const boostCost=o.boost?Math.max(projectPriceIndex(),Math.min(18*projectPriceIndex(),o.value*.01)):0;
  const grossPitchCost=+(boostCost+pitchFreeCost).toFixed(1);
@@ -994,11 +1015,11 @@ function takeProject(id,useFree=false){
      log('三连胜。客户圈开始传你的名字，掉下来一笔连带散活。','good');
    }
    if(S.winStreak===5){
-     S.reputation=clamp(S.reputation+4,0,100);
-     log('五连胜。行业声望 +4，主动邀约概率明显上升。','good');
+     S.reputation=clamp(S.reputation+2,0,100);
+     log('五连胜。圈里开始明显注意到你们，行业声望 +2。','good');
    }
  }else{
-   S.losses++;S.lossStreak++;S.winStreak=0;S.reputation=clamp(S.reputation-1,0,100);
+   S.losses++;S.lossStreak++;S.winStreak=0;
    const lossText=pitchFee>0
      ? (grossPitchCost>0
         ? `输了：${o.name}。额外比稿投入 ${fmt(grossPitchCost)}，收到比稿费 ${fmt(pitchFee)}，净结果 ${netPitchCost>0?'-'+fmt(netPitchCost).replace('-',''):'+'+fmt(Math.abs(netPitchCost))}。`
@@ -1210,10 +1231,8 @@ function resolveYear(){
  });
  const done=S.active.filter(p=>p.left<=0);
  done.forEach(p=>{
-   if(p.quality>84){
-     S.reputation=clamp(S.reputation+2,0,100);
-     S.qualityMomentum=(S.qualityMomentum||0)+1;
-   }
+   applyProjectReputation(p);
+   if(p.quality>84)S.qualityMomentum=(S.qualityMomentum||0)+1;
    maybeCreateRenewal(p);
  });
  S.qualityMomentum=Math.max(0,(S.qualityMomentum||0)-1);
@@ -1253,10 +1272,8 @@ function resolveQuarter(){
  });
  const done=S.active.filter(p=>p.left<=0);
  done.forEach(p=>{
-   if(p.quality>84){
-     S.reputation=clamp(S.reputation+2,0,100);
-     S.qualityMomentum=(S.qualityMomentum||0)+1;
-   }
+   applyProjectReputation(p);
+   if(p.quality>84)S.qualityMomentum=(S.qualityMomentum||0)+1;
    maybeCreateRenewal(p);
  });
  S.qualityMomentum=Math.max(0,(S.qualityMomentum||0)-1);
@@ -1459,7 +1476,7 @@ function closeYear(bonus,party){
  S.profit-=bonusCost+partyCost;
  S.morale=clamp(S.morale + (bonus===0?-5:bonus===1?0:bonus===2?4:6)+(party===0?0:party===1?2:4),0,100);
  const preTaxYearProfit=S.profit-(Number.isFinite(S.yearStartProfit)?S.yearStartProfit:0);
- const tax=Math.max(0,preTaxYearProfit)*DIFF[S.diff].tax;
+ const tax=Math.max(0,preTaxYearProfit)*gameRules().tax;
  S.cash-=tax;S.profit-=tax;
  const feedback=yearEndFeedback(bonus,party);
  const salaryGrowth=salaryGrowthRate();
