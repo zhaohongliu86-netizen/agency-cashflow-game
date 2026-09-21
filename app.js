@@ -940,7 +940,7 @@ function quarterStatusCopy(){
  if(S.cash>0)return `已经累计亏损 ${fmt(S.profit)}，但账上还有现金。还能撑，只是每一季都更贵。`;
  return `利润和现金都已经变红。再推进，就是拿未来换时间。`;
 }
-function isAnnualMode(){return S.year>=8}
+function isAnnualMode(){return S.year>=8&&S.quarter===1}
 function progressQuarter(){
  if(S.ended||document.getElementById('quarterTransition'))return;
  if(isAnnualMode()){progressYear();return}
@@ -1544,13 +1544,13 @@ function cardHTML(o){
  const moraleLine=moraleGate.required
    ? `<div class="senior-requirement ${moraleLocked?'senior-short':'senior-ok'}">士气门槛 ${moraleGate.required} · 当前 ${moraleGate.current}</div>`
    : '';
- return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'资深比例不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
+ return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'团队士气不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
  const save=readSavedGame();
  const saveBlock=save?`<div class="continue-save">
-   <div><span>本机存档</span><b>第 ${save.year} 年 Q${save.quarter} · ${save.diff}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · ${(save.team||[]).length} 人</small></div>
+   <div><span>本机存档</span><b>第 ${save.year} 年${save.year>=8&&save.quarter===1?' · 年度经营':` Q${save.quarter}`} · ${save.diff}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · ${(save.team||[]).length} 人</small></div>
    <div class="row"><button class="btn" onclick="loadSavedGame()">继续经营 →</button><button class="btn secondary" onclick="deleteSaveFromStart()">删除存档</button></div>
  </div>`:'';
  return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>把一家广告公司开过12年。第3、6、9年阶段结算，第12年正式退休；退休后还可以选择进入长青模式。</p>${saveBlock}<div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">前7年按季度经营；第8年起自动加速为一年一个经营回合。标准模式第12年退休，可随时存档。</p></div></div>`;
