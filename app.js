@@ -376,6 +376,7 @@ function createInboundOpportunity(){
  const base=makeOpportunity('pitch');
  base.inbound=true;
  base.inboundBonus=12;
+ base.requiredReputation=0;
  base.name='主动邀约 · '+base.name;
  base.fameMarginBonus=base.reputationMarginBonus||0;
  base.margin=Math.min(.60,+(base.margin+.02).toFixed(2));
@@ -603,9 +604,10 @@ function makeOpportunity(forced=''){
  const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:realValue>=1000?['大型整合Pitch','年度核心战役Pitch','超级整合Pitch','品牌焕新Pitch']:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch']};
  const pitchWeeks=type==='pitch'?pick([2,2,2,3]):0;
  const pitchFee=(type==='pitch'&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0;
- const opportunity={id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,pitchSupport:false};
- ensureProjectNeeds(opportunity);
- return applyProjectEconomics(opportunity);
+ const opportunity={id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,resourceBoost:0};
+ applyProjectEconomics(opportunity);
+ opportunity.requiredReputation=reputationRequirementFor(opportunity);
+ return opportunity;
 }
 function renewalChance(morale){
  let base=morale<75?0:morale<85?.25:morale<95?.45:.65;
@@ -637,9 +639,11 @@ function maybeCreateRenewal(p){
    pitchWeeks:isBig?pick([2,2,3]):0,
    pitchFee:(isBig&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0,
    freeAllowed:true,
-   pitchSupport:false,
+   resourceBoost:0,
+   requiredReputation:0,
    renewal:true,
    reputationMarginBonus:repMargin,
+   reputationMarginApplied:true,
    previousMargin:p.margin
  };
  ensureProjectNeeds(renewal);
