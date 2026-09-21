@@ -624,15 +624,26 @@ function applyProjectEconomics(o){
  o.economicsApplied=true;
  return o;
 }
+function pitchSupportStrength(o){
+ const people=o?.pitchSupportPeople||[];
+ if(!o?.pitchSupport||!people.length)return 0;
+ const avg=people.reduce((a,p)=>a+(Number(p.skill)||70),0)/people.length;
+ return clamp(Math.round((avg-62)*.35),5,10);
+}
 function projectMatch(o){
  ensureProjectNeeds(o);
  const caps=companyCapabilities();
- const primary=caps[o.needPrimary]||60,secondary=caps[o.needSecondary]||60;
+ const basePrimary=caps[o.needPrimary]||60,baseSecondary=caps[o.needSecondary]||60;
+ const support=pitchSupportStrength(o);
+ const primary=clamp(basePrimary+(o.pitchSupport?support:0),35,99);
+ const secondary=clamp(baseSecondary+(o.pitchSupport?Math.round(support*.7):0),35,99);
+ const baseScore=Math.round(basePrimary*.65+baseSecondary*.35);
  const score=Math.round(primary*.65+secondary*.35);
+ const basePitchBonus=clamp(Math.round((baseScore-72)*1.10),-22,22);
  const pitchBonus=clamp(Math.round((score-72)*1.10),-22,22);
  const qualityBonus=clamp(Math.round((score-72)*.50),-8,10);
  const label=score>=84?'强项':score>=76?'有优势':score>=67?'一般':'短板';
- return {score,bonus:pitchBonus,pitchBonus,qualityBonus,label,primary,secondary,caps};
+ return {score,bonus:pitchBonus,pitchBonus,qualityBonus,label,primary,secondary,caps,supportBonus:pitchBonus-basePitchBonus};
 }
 function projectMatchDetail(o){
  const m=projectMatch(o);
@@ -659,6 +670,60 @@ function projectHireRoles(o,count){
    result.push(pool[i%pool.length]);
  }
  return result;
+}
+
+function pitchSupportCost(o){
+ const count=(o.pitchSupportPeople||[]).length;
+ return +(count*freeWeeklyRate()*(o.pitchWeeks||2)).toFixed(1);
+}
+function togglePitchSupport(id){
+ const o=S.opp.find(x=>x.id===id);if(!o||o.type!=='pitch')return;
+ if(o.pitchSupport){
+   o.pitchSupport=false;
+   o.pitchSupportPeople=[];
+ }else{
+   o.pitchSupport=true;
+   o.pitchSupportPeople=projectHireRoles(o,2).map(role=>createHireCandidate(role));
+ }
+ render();saveGame(false);
+}
+function showPitchSupportRetentionChoice(o,onChoice){
+ const people=o.pitchSupportPeople||[];
+ if(!people.length){onChoice('none');return}
+ const host=document.createElement('div');
+ host.className='overlay';host.id='pitchSupportRetentionModal';
+ const monthly=people.reduce((a,p)=>a+p.salary,0);
+ const fee=+(monthly*.5).toFixed(1);
+ const execCost=+(people.length*freeWeeklyRate()*o.duration).toFixed(1);
+ host.innerHTML=`<div class="modal staffing-modal">
+   <div class="big">这批 Pitch Free，留不留？</div>
+   <p><b>${o.name}</b> 已经赢了。这 ${people.length} 位外部同事分别补的是 ${projectNeedLabel(o)}。</p>
+   <div class="staffing-options">
+     <div class="staffing-option">
+       <h3>转成正式员工</h3>
+       <p>${people.map(p=>`${p.role} · 能力 ${p.skill}`).join('<br>')}</p>
+       <p><b>转正成本约 ${fmt(fee)}</b><br>以后每月固定工资 +${fmt(monthly)}</p>
+       <button class="btn" id="retainPitchFree">留下他们</button>
+     </div>
+     <div class="staffing-option">
+       <h3>继续按 Free 合作</h3>
+       <p>不增加正式编制，执行期继续按项目合作。</p>
+       <p><b>执行合作成本约 ${fmt(execCost)}</b></p>
+       <button class="btn secondary" id="keepPitchFreeExternal">继续用 Free</button>
+     </div>
+   </div>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#retainPitchFree').onclick=()=>{
+   host.remove();
+   const before=S.team.length;
+   S.cash-=fee;S.profit-=fee;S.yearSpend+=fee;
+   people.forEach(p=>{S.team.push(p);assignPerson(p,o.duration)});
+   showScaleUpgrade(before,S.team.length);
+   log(`把 ${people.length} 位 Pitch Free 留进正式团队。招聘成本 ${fmt(fee)}，每月固定工资 +${fmt(monthly)}。`,'good');
+   onChoice('converted');
+ };
+ host.querySelector('#keepPitchFreeExternal').onclick=()=>{host.remove();onChoice('external')};
 }
 
 function requiredPeople(type,value,duration){
@@ -1183,7 +1248,7 @@ function maybeLeave(){
  let risk=.42-clamp((S.morale-50)/130,0,.25); if(Math.random()>risk){log('三连败之后团队情绪低，但这次没人辞职。','muted');return}
  const candidates=S.team.filter(p=>p.role!=='老板'); if(!candidates.length)return; const gone=pick(candidates);S.team=S.team.filter(p=>p.id!==gone.id);log(`${gone.name} 提了离职。离职本身不花钱，重新招人才花。`,'bad');
 }
-function boost(id){const o=S.opp.find(x=>x.id===id);if(o){o.boost=!o.boost;render()}}
+function boost(id){togglePitchSupport(id)}
 function quarterStatusCopy(){
  if(S.profit>=300)return '账面很绿。现在最危险的是觉得自己不会犯错。';
  if(S.profit>=0)return '还在盈利。下一季度，继续决定钱该花在哪。';
