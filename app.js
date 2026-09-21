@@ -32,13 +32,15 @@ function readSavedGame(){
 }
 function normalizeLoadedGame(data){
  const defaults={
-   pendingHires:[],pendingRenewals:[],qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
+   pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
    route:{pitch:0,retainer:0,small:0,free:0},
    records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
  };
  const loaded=Object.assign(defaults,data);
  loaded.route=Object.assign({pitch:0,retainer:0,small:0,free:0},loaded.route||{});
  loaded.records=Object.assign({maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0},loaded.records||{});
+ if(!Number.isFinite(loaded.records.maxQuarterProfit))loaded.records.maxQuarterProfit=-Infinity;
+ loaded.awaitingYearEnd=!!loaded.awaitingYearEnd;
  loaded.team=(loaded.team||[]).map(p=>normalizePerson(p));
  loaded.year=clamp(Number(loaded.year)||1,1,MAX_YEARS);
  loaded.quarter=clamp(Number(loaded.quarter)||1,1,4);
@@ -68,6 +70,7 @@ function loadSavedGame(){
  S=normalizeLoadedGame(data);
  render();
  showSaveToast('存档已读取',`继续第 ${S.year} 年 Q${S.quarter}`);
+ if(S.awaitingYearEnd)setTimeout(()=>yearEnd(),250);
 }
 function showSaveToast(title,copy,bad=false){
  const old=document.querySelector('.save-toast');if(old)old.remove();
@@ -80,7 +83,7 @@ function showSaveToast(title,copy,bad=false){
 }
 function start(diff){
  const d=DIFF[diff];
- S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
+ S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
  S.active.push({id:uid(),name:'老客户A · 日常品牌服务',type:'retainer',value:72,margin:.42,weeks:24,left:24,people:3,quality:70,legacy:true});
  S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
  allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render(); saveGame(false);
@@ -834,7 +837,9 @@ function resolveQuarter(){
  const atYearEnd=S.quarter===4;
  const continueAfterReview=()=>{
    if(atYearEnd){
+     S.awaitingYearEnd=true;
      render();
+     saveGame(false);
      yearEnd();
      return;
    }
@@ -949,6 +954,7 @@ function showMilestoneSummary(){
 }
 
 function closeYear(bonus,party){
+ S.awaitingYearEnd=false;
  const bonusCost=payroll()*bonus;
  const partyCost=party===0?0:party===1?S.team.length*.3:S.team.length*.8;
  S.cash-=bonusCost+partyCost;
@@ -1084,9 +1090,9 @@ async function benchmarkHit(action,key){
  }catch(e){return false}
 }
 async function getPeerBenchmark(){
- const action=`result-${S.diff}`;
+ const action=`result-${S.diff}-y${S.year}`;
  const bucket=profitBucketIndex(S.profit);
- const storageKey=`agencyBenchmarkSubmitted-${S.diff}-v1`;
+ const storageKey=`agencyBenchmarkSubmitted-${S.diff}-y${S.year}-v2`;
  let submitted=false;
  try{submitted=localStorage.getItem(storageKey)==='1'}catch(e){}
  if(!submitted){
@@ -1170,7 +1176,7 @@ function showEnding(reason){
  getPeerBenchmark().then(r=>{
    const el=document.getElementById('peerBenchmark');if(!el)return;
    if(!r){el.innerHTML='<span>同行战绩</span><b>实际玩家样本暂时读取失败</b>';return}
-   el.innerHTML=`<span>同行战绩 · ${S.diff}</span><b>打败了 ${r.pct}% 的同行</b><small>基于 ${r.total} 位实际完成玩家的匿名成绩</small>`;
+   el.innerHTML=`<span>同行战绩 · ${S.diff} · ${S.year}年</span><b>打败了 ${r.pct}% 的同行</b><small>基于 ${r.total} 位相同经营年数的实际玩家匿名成绩</small>`;
  });
 }
 
