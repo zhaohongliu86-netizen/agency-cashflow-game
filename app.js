@@ -327,13 +327,16 @@ function takeProject(id,useFree=false){
  const freeShare=freeCount/o.people;
  const pitchFreeCost=freeCount?pitchFreeCostFor(o,freeCount):0;
  const staffing=clamp((teamScore-72)*.35,-8,10);
- const boost=o.boost?pick([5,6,7,8,9,10,11,12]):0;
+ const boost=o.boost?pick(Array.from({length:45},(_,i)=>i+5)):0;
  const freePenalty=freeShare>.5?-8:0;
  const pWin=clamp(35+DIFF[S.diff].baseWin+staffing+boost+freePenalty+clamp((S.reputation-50)*.18,-7,8),8,92);
- const pitchCost=Math.max(1,Math.min(12,o.value*.012))+(o.boost?Math.max(1,o.value*.01):0);
- const grossPitchCost=+(pitchCost+pitchFreeCost).toFixed(1);
+ // 自有员工参与比稿不产生额外现金成本。只有 Free 和主动加码才产生增量费用。
+ const boostCost=o.boost?Math.max(1,Math.min(18,o.value*.01)):0;
+ const grossPitchCost=+(boostCost+pitchFreeCost).toFixed(1);
 
- S.cash-=grossPitchCost;S.yearSpend+=grossPitchCost;S.profit-=grossPitchCost;
+ if(grossPitchCost>0){
+   S.cash-=grossPitchCost;S.yearSpend+=grossPitchCost;S.profit-=grossPitchCost;
+ }
  if(freeCount){S.route.free+=freeCount;log(`比稿期用了 ${freeCount} 个 Free，共 ${o.pitchWeeks} 周，成本 ${fmt(pitchFreeCost)}。`,'muted')}
 
  const pitchFee=o.pitchFee||0;
@@ -358,8 +361,12 @@ function takeProject(id,useFree=false){
  }else{
    S.losses++;S.lossStreak++;S.winStreak=0;S.reputation=clamp(S.reputation-1,0,100);
    const lossText=pitchFee>0
-     ? `输了：${o.name}。比稿总投入 ${fmt(grossPitchCost)}，收回比稿费 ${fmt(pitchFee)}，净成本 ${fmt(Math.max(0,netPitchCost))}。`
-     : `输了：${o.name}。比稿投入 ${fmt(grossPitchCost)}。`;
+     ? (grossPitchCost>0
+        ? `输了：${o.name}。额外比稿投入 ${fmt(grossPitchCost)}，收到比稿费 ${fmt(pitchFee)}，净结果 ${netPitchCost>0?'-'+fmt(netPitchCost).replace('-',''):'+'+fmt(Math.abs(netPitchCost))}。`
+        : `输了：${o.name}。全用内部员工，没有额外比稿成本；另收到比稿费 ${fmt(pitchFee)}。`)
+     : (grossPitchCost>0
+        ? `输了：${o.name}。额外比稿投入 ${fmt(grossPitchCost)}。`
+        : `输了：${o.name}。全用内部员工，没有额外现金损失。`);
    log(lossText,'bad');
    if(S.lossStreak>=3){S.lossStreak=0;maybeLeave()}
  }
@@ -369,7 +376,7 @@ function takeProject(id,useFree=false){
 
  showPitchSuspense(o,()=>showProjectResult({
    won,type:o.type,name:o.name,value:o.value,
-   cost:Math.max(0,netPitchCost),grossCost:grossPitchCost,pitchFee,pWin,
+   cost:netPitchCost,grossCost:grossPitchCost,pitchFee,pWin,boost,
    afterClose:()=>{
      if(!won)return;
      if(freeCount>0&&useFree)showPostPitchExecutionChoice(o,selected,freeCount,teamScore);
@@ -412,7 +419,7 @@ function showPitchSuspense(o,onDone){
  setTimeout(()=>{host.remove();onDone()},total);
 }
 
-function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0,afterClose=null}){
+function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0,boost=0,afterClose=null}){
  const old=document.getElementById('pitchResultModal'); if(old)old.remove();
 
  if(type!=='pitch'){
@@ -434,14 +441,17 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
    ? `连续 ${S.winStreak} 次赢稿`
    : (!won && S.lossStreak>1 ? `连续 ${S.lossStreak} 次丢稿` : '');
  const feeLine=pitchFee>0
-   ? `比稿投入 ${fmt(grossCost)} · 比稿费 +${fmt(pitchFee)} · 净比稿成本 ${fmt(cost)}`
-   : `本次比稿投入 ${fmt(grossCost||cost)}`;
+   ? (grossCost>0
+      ? `额外投入 ${fmt(grossCost)} · 比稿费 +${fmt(pitchFee)} · 净结果 ${cost>0?'-'+fmt(cost).replace('-',''):'+'+fmt(Math.abs(cost))}`
+      : `全用内部员工 · 无额外比稿成本 · 比稿费 +${fmt(pitchFee)}`)
+   : (grossCost>0?`本次额外投入 ${fmt(grossCost)}`:'全用内部员工 · 无额外比稿成本');
+ const boostLine=boost>0?` · 本次加码胜率 +${boost}%`:'';
  host.innerHTML=`<div class="pitch-result-card">
    <div class="pitch-result-kicker">PITCH RESULT</div>
    <div class="pitch-result-title">${won?'赢稿！':'丢稿。'}</div>
    <div class="pitch-result-project">${name}</div>
-   <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:`净损失 ${fmt(cost)}`}</div>
-   <div class="pitch-result-meta">${feeLine}<br>当时胜率约 ${pWin.toFixed(0)}%${streak?` · ${streak}`:''}</div>
+   <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:(cost>0?`额外成本 ${fmt(cost)}`:cost<0?`比稿净收入 ${fmt(Math.abs(cost))}`:'没有额外现金损失')}</div>
+   <div class="pitch-result-meta">${feeLine}<br>当时胜率约 ${pWin.toFixed(0)}%${boostLine}${streak?` · ${streak}`:''}</div>
    <button class="btn pitch-result-button" id="closePitchResult">${won?'安排执行人力':'认了，继续经营'}</button>
  </div>`;
  document.body.appendChild(host);
@@ -454,6 +464,24 @@ function maybeLeave(){
 }
 function boost(id){const o=S.opp.find(x=>x.id===id);if(o){o.boost=!o.boost;render()}}
 function progressQuarter(){
+ if(S.ended||document.getElementById('quarterTransition'))return;
+ const positive=S.profit>=0;
+ const profitCopy=positive
+   ? ['财务还算得过来…','客户回款中…','这一季至少还没白忙…','工资照发，项目照跑…']
+   : ['财务表开始变红…','现金流正在冒烟…','工资日又快到了…','有人开始问：下季度会好吗？'];
+ const neutral=['项目往前推了十二周…','客户群还在响…','有人交付，有人改第八版…','时间从方案里穿过去了…','这一季度也没有暂停键…'];
+ const host=document.createElement('div');
+ host.className=`overlay quarter-transition ${positive?'quarter-positive':'quarter-negative'}`;
+ host.id='quarterTransition';
+ host.innerHTML=`<div class="quarter-transition-card">
+   <div class="quarter-transition-kicker">Q${S.quarter} →</div>
+   <div class="quarter-transition-copy">${pick([...profitCopy,...neutral])}</div>
+   <div class="quarter-transition-sub">正在结算这一季度</div>
+ </div>`;
+ document.body.appendChild(host);
+ setTimeout(()=>{host.remove();resolveQuarter()},1500);
+}
+function resolveQuarter(){
  if(S.ended)return;
  const manpowerBefore=totalFreeSlots();
  let gross=0,margin=0;
@@ -617,7 +645,7 @@ function render(){
    </div>
  </div>
  <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
- <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2><div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div style="margin-top:14px" class="row"><button class="btn" onclick="progressQuarter()">推进一季度 →</button><span class="muted">季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</span></div>
+ <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2><div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div style="margin-top:14px" class="row"><button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button><span class="muted">季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</span></div>
  <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>工龄</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${Number.isFinite(p.tenure)?p.tenure:2}年</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
 }
 function durationLabel(weeks){
@@ -644,7 +672,7 @@ function cardHTML(o){
  const manpowerPreview=isPitch
    ? `赢稿执行将占用约 ${internalUse} 人力槽`
    : `接下后约剩 ${remaining} 人力槽`;
- return `<div class="card"><div class="card-topline"><span class="tag">${o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加人力成本 +5~12%'}</button>`:''}</div></div>`
+ return `<div class="card"><div class="card-topline"><span class="tag">${o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>你有三年。客户不保证续约，Pitch不保证赢，员工不保证不跑。唯一保证的是工资每年涨10%。</p><div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">一局约 5–8 分钟。目标不是找到最优解，而是看看你会把公司经营成什么东西。</p></div></div>`}
