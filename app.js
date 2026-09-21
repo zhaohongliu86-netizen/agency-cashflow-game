@@ -1082,53 +1082,61 @@ function layoffCandidates(){return S.team.filter(p=>p.role!=='老板')}
 function showLayoffModal(){
  const candidates=layoffCandidates();
  if(!candidates.length)return;
+ const protectedCount=candidates.filter(p=>activeLoads(p).length>0).length;
  const host=document.createElement('div');host.className='overlay';host.id='layoffModal';
  host.innerHTML=`<div class="modal layoff-modal">
    <div class="big">裁员</div>
-   <p class="muted">初始团队默认已有 2 年工龄，每过一年工龄 +1。赔偿按工龄折算月薪，最低 1 个月。可以一次裁多人。</p>
+   <p class="muted">初始团队默认已有 2 年工龄，每过一年工龄 +1。赔偿按工龄折算月薪，最低 1 个月。<b>正在项目上的人必须保留到项目结束，不能裁。</b></p>
+   ${protectedCount?`<div class="layoff-protected-note">当前有 ${protectedCount} 人在项目上，被锁定。项目结束、人力释放后才能进入裁员名单。</div>`:''}
    <div class="layoff-list">
-     ${candidates.map(p=>`<label class="layoff-row">
-       <input type="checkbox" value="${p.id}">
-       <span><b>${p.name}</b><small>${p.role} · 工龄 ${Number.isFinite(p.tenure)?p.tenure:2} 年 · 月薪 ${fmt(p.salary)}${activeLoads(p).length?' · 正在项目中':''}</small></span>
-       <strong>${fmt(severanceCost(p))}</strong>
-     </label>`).join('')}
+     ${candidates.map(p=>{
+       const protectedByProject=activeLoads(p).length>0;
+       return `<label class="layoff-row ${protectedByProject?'layoff-row-protected':''}">
+         <input type="checkbox" value="${p.id}" ${protectedByProject?'disabled':''}>
+         <span><b>${p.name}</b><small>${p.role} · 工龄 ${Number.isFinite(p.tenure)?p.tenure:2} 年 · 月薪 ${fmt(p.salary)}${protectedByProject?` · 项目中，需保留（${activeLoads(p).length}个负载）`:''}</small></span>
+         <strong>${protectedByProject?'不可裁':fmt(severanceCost(p))}</strong>
+       </label>`;
+     }).join('')}
    </div>
-   <div class="layoff-summary" id="layoffSummary">请选择要裁掉的人。</div>
+   <div class="layoff-summary" id="layoffSummary">只能选择当前空闲员工。</div>
    <div class="row">
      <button class="btn secondary" id="cancelLayoff">取消</button>
      <button class="btn warn" id="confirmLayoff" disabled>确认裁员</button>
    </div>
  </div>`;
  document.body.appendChild(host);
- const boxes=[...host.querySelectorAll('input[type="checkbox"]')];
+ const boxes=[...host.querySelectorAll('input[type="checkbox"]:not(:disabled)')];
  const summary=host.querySelector('#layoffSummary');
  const confirm=host.querySelector('#confirmLayoff');
  function sync(){
    const ids=boxes.filter(x=>x.checked).map(x=>x.value);
-   const people=candidates.filter(p=>ids.includes(p.id));
+   const people=candidates.filter(p=>ids.includes(p.id)&&activeLoads(p).length===0);
    const total=people.reduce((a,p)=>a+severanceCost(p),0);
-   const busy=people.filter(p=>activeLoads(p).length).length;
    summary.innerHTML=ids.length
-     ? `裁 ${ids.length} 人 · 赔偿 ${fmt(total)}${busy?` · 其中 ${busy} 人正在项目上，团队士气和声望会受影响`:''}`
-     : '请选择要裁掉的人。';
-   confirm.disabled=!ids.length;
-   confirm.onclick=ids.length?()=>executeLayoffs(ids):null;
+     ? `裁 ${people.length} 人 · 赔偿 ${fmt(total)} · 在做项目的人已自动保留`
+     : '只能选择当前空闲员工。';
+   confirm.disabled=!people.length;
+   confirm.onclick=people.length?()=>executeLayoffs(people.map(p=>p.id)):null;
  }
  boxes.forEach(x=>x.onchange=sync);
  host.querySelector('#cancelLayoff').onclick=()=>host.remove();
 }
 function executeLayoffs(ids){
  const host=document.getElementById('layoffModal');
- const people=S.team.filter(p=>ids.includes(p.id)&&p.role!=='老板');
- if(!people.length){if(host)host.remove();return}
+ const requested=S.team.filter(p=>ids.includes(p.id)&&p.role!=='老板');
+ const protectedPeople=requested.filter(p=>activeLoads(p).length>0);
+ const people=requested.filter(p=>activeLoads(p).length===0);
+ if(protectedPeople.length){
+   log(`裁员被拦住：${protectedPeople.length} 人仍在执行项目，必须保留到项目结束。`,'muted');
+ }
+ if(!people.length){if(host)host.remove();render();return}
  const before=S.team.length;
  const cost=people.reduce((a,p)=>a+severanceCost(p),0);
- const busy=people.filter(p=>activeLoads(p).length).length;
  S.cash-=cost;S.profit-=cost;S.yearSpend+=cost;
- S.team=S.team.filter(p=>!ids.includes(p.id)||p.role==='老板');
- S.morale=clamp(S.morale-people.length*3-busy*2,0,100);
- if(busy)S.reputation=clamp(S.reputation-busy,0,100);
- log(`裁掉 ${people.length} 人，赔偿 ${fmt(cost)}。${busy?`其中 ${busy} 人仍在项目上，士气和声望受损。`:''}`,'bad');
+ const removable=new Set(people.map(p=>p.id));
+ S.team=S.team.filter(p=>!removable.has(p.id));
+ S.morale=clamp(S.morale-people.length*3,0,100);
+ log(`裁掉 ${people.length} 个当前空闲员工，赔偿 ${fmt(cost)}。项目执行人力全部保留。`,'bad');
  if(host)host.remove();
  render();
  saveGame(false);
