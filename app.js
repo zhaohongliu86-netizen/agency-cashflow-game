@@ -617,28 +617,23 @@ function needProfileFor(type,name=''){
  return ['creative','strategy'];
 }
 function projectFlavor(o){
- const needs=[o.needPrimary,o.needSecondary];
- const prestige=needs.filter(k=>k==='strategy'||k==='creative').length;
- const delivery=needs.filter(k=>k==='service'||k==='execution').length;
- if(prestige===2)return 'prestige';
- if(delivery===2)return 'delivery';
+ if(o?.flavor)return o.flavor;
+ const name=String(o?.name||'');
+ if(name.includes('品牌焕新')||name.includes('新品上市')||name.includes('品牌顾问')||name.includes('创意'))return 'prestige';
+ if(name.includes('大型整合')||name.includes('超级整合')||name.includes('社媒')||name.includes('内容长期')||name.includes('年度整合'))return 'delivery';
+ if(o?.type==='retainer')return 'delivery';
  return 'mixed';
 }
 function calculateProjectReputationValue(o){
  const real=realProjectValue(o.value||0);
  const sizeBase=real>=3000?5:real>=1000?4:real>=500?3:real>=150?2:1;
- const needs=[o.needPrimary,o.needSecondary];
- const prestige=needs.filter(k=>k==='strategy'||k==='creative').length;
- const delivery=needs.filter(k=>k==='service'||k==='execution').length;
- let value=sizeBase+prestige*2-(delivery===2?1:0)-(o.type==='retainer'?1:0);
+ const flavor=projectFlavor(o);
+ let value=sizeBase+(flavor==='prestige'?3:flavor==='delivery'?-1:1)-(o.type==='retainer'?1:0);
  return clamp(Math.round(value),1,9);
 }
 function ensureProjectNeeds(o){
  if(!o)return o;
- if(!o.needPrimary||!o.needSecondary){
-   const [primary,secondary]=needProfileFor(o.type,o.name||'');
-   o.needPrimary=primary;o.needSecondary=secondary;
- }
+ if(!o.flavor)o.flavor=projectFlavor(o);
  if(!Number.isFinite(o.reputationValue))o.reputationValue=calculateProjectReputationValue(o);
  return o;
 }
@@ -668,47 +663,11 @@ function pitchSupportStrength(o){
  return clamp(Math.round((avg-62)*.35),5,10);
 }
 function projectMatch(o){
- ensureProjectNeeds(o);
- const caps=companyCapabilities();
- const basePrimary=caps[o.needPrimary]||60,baseSecondary=caps[o.needSecondary]||60;
- const support=pitchSupportStrength(o);
- const primary=clamp(basePrimary+(o.pitchSupport?support:0),35,99);
- const secondary=clamp(baseSecondary+(o.pitchSupport?Math.round(support*.7):0),35,99);
- const baseScore=Math.round(basePrimary*.65+baseSecondary*.35);
- const score=Math.round(primary*.65+secondary*.35);
- const basePitchBonus=clamp(Math.round((baseScore-72)*1.10),-22,22);
- const pitchBonus=clamp(Math.round((score-72)*1.10),-22,22);
- const qualityBonus=clamp(Math.round((score-72)*.50),-8,10);
- const label=score>=84?'强项':score>=76?'有优势':score>=67?'一般':'短板';
- return {score,bonus:pitchBonus,pitchBonus,qualityBonus,label,primary,secondary,caps,supportBonus:pitchBonus-basePitchBonus};
+ const supportBonus=pitchSupportStrength(o);
+ return {score:72+supportBonus,bonus:supportBonus,pitchBonus:supportBonus,qualityBonus:0,label:'',supportBonus};
 }
-function projectMatchDetail(o){
- const m=projectMatch(o);
- const p=CAPABILITY_META[o.needPrimary].label.replace('力','');
- const s=CAPABILITY_META[o.needSecondary].label.replace('力','');
- return `${p} ${m.primary} · ${s} ${m.secondary}`;
-}
-function projectNeedLabel(o){
- ensureProjectNeeds(o);
- return `${CAPABILITY_META[o.needPrimary].label} + ${CAPABILITY_META[o.needSecondary].label}`;
-}
-function rolesForCapability(key){
- if(key==='strategy')return ['策略'];
- if(key==='creative')return ['创意'];
- if(key==='service')return ['阿康'];
- return ['制片'];
-}
-function projectHireRoles(o,count){
- ensureProjectNeeds(o);
- const primary=rolesForCapability(o.needPrimary),secondary=rolesForCapability(o.needSecondary);
- const result=[];
- for(let i=0;i<count;i++){
-   const pool=i%2===0?primary:secondary;
-   result.push(pool[i%pool.length]);
- }
- return result;
-}
-
+function projectMatchDetail(){return ''}
+function projectNeedLabel(){return 'Pitch外援'}
 function pitchSupportCost(o){
  const count=(o.pitchSupportPeople||[]).length;
  return +(count*freeWeeklyRate()*(o.pitchWeeks||2)).toFixed(1);
@@ -720,7 +679,7 @@ function togglePitchSupport(id){
    o.pitchSupportPeople=[];
  }else{
    o.pitchSupport=true;
-   o.pitchSupportPeople=projectHireRoles(o,2).map(role=>createHireCandidate(role));
+   o.pitchSupportPeople=Array.from({length:2},()=>createHireCandidate());
  }
  render();saveGame(false);
 }
@@ -734,7 +693,7 @@ function showPitchSupportRetentionChoice(o,onChoice){
  const execCost=+(people.length*freeWeeklyRate()*o.duration).toFixed(1);
  host.innerHTML=`<div class="modal staffing-modal">
    <div class="big">这批 Pitch Free，留不留？</div>
-   <p><b>${o.name}</b> 已经赢了。这 ${people.length} 位外部同事分别补的是 ${projectNeedLabel(o)}。</p>
+   <p><b>${o.name}</b> 已经赢了。这 ${people.length} 位外部同事在比稿期帮你把方案往上抬了一截。</p>
    <div class="staffing-options">
      <div class="staffing-option">
        <h3>转成正式员工</h3>
@@ -784,12 +743,7 @@ function makeOpportunity(forced=''){
  const r=Math.random();
  let type=forced;
  if(!type){
-   let [smallCut,retainerCut]=econ.mix;
-   if(S.scale){
-     const shift=startScale().mixShift||[0,0];
-     smallCut=clamp(smallCut+shift[0],.06,.60);
-     retainerCut=clamp(retainerCut+shift[1],smallCut+.04,.82);
-   }
+   const [smallCut,retainerCut]=econ.mix;
    type=r<smallCut?'small':r<retainerCut?'retainer':'pitch';
  }
  const scaleStep=businessScaleStep();
@@ -814,16 +768,15 @@ function makeOpportunity(forced=''){
  const margin= type==='retainer'?pick([.22,.28,.33,.38]):type==='small'?pick([.45,.5,.55]):pick([.28,.34,.4,.46]);
  const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:realValue>=1000?['大型整合Pitch','年度核心战役Pitch','超级整合Pitch','品牌焕新Pitch']:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch']};
  const pitchWeeks=type==='pitch'?pick([2,2,2,3]):0;
- const pitchFee=(type==='pitch'&&!S.scale&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0;
+ const pitchFee=(type==='pitch'&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0;
  const opportunity={id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,pitchSupport:false};
  ensureProjectNeeds(opportunity);
  return applyProjectEconomics(opportunity);
 }
 function renewalChance(morale){
  let base=morale<75?0:morale<85?.25:morale<95?.45:.65;
- const service=companyCapabilities().service;
- const serviceBonus=clamp((service-70)*.008,-.08,.14);
- return clamp(base+economyPhase().renewal+serviceBonus,0,.78);
+ const reputationBonus=S.reputation>=80?.08:S.reputation>=60?.04:S.reputation<30?-.04:0;
+ return clamp(base+economyPhase().renewal+reputationBonus,0,.78);
 }
 function maybeCreateRenewal(p){
  if(!p||p.type!=='retainer')return;
@@ -893,10 +846,7 @@ function createHireCandidate(requestedRole=''){
  return {id:uid(),name:pick(names),role:roleTitle(role,skill),spec:roleSpec(role),salary,skill,slots:[],tenure:0};
 }
 function candidateImpactHTML(person){
- const delta=capabilityDelta(person);
- const changes=Object.entries(delta).filter(([,v])=>v!==0).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
- if(!changes.length)return '<span>四维基本不变，主要增加人力容量</span>';
- return changes.slice(0,3).map(([k,v])=>`<span class="${v<0?'impact-down':''}">${CAPABILITY_META[k].label} <b>${v>0?'+':''}${v}</b></span>`).join('');
+ return `<span>能力 ${person.skill}</span><span>正式编制 +1</span>`;
 }
 function commitHire(person,host=null){
  const before=S.team.length,fee=person.salary*.5;
@@ -909,7 +859,7 @@ function commitHire(person,host=null){
 }
 function hire(){
  const old=document.getElementById('hireModal');if(old)old.remove();
- const candidates=roles.map(role=>createHireCandidate(role));
+ const candidates=Array.from({length:4},()=>createHireCandidate());
  const market=reputationEffects();
  const talentCopy=market.talentSkill===0
    ? '人才市场正常'
@@ -917,7 +867,7 @@ function hire(){
  const host=document.createElement('div');host.className='overlay';host.id='hireModal';
  host.innerHTML=`<div class="modal hire-modal">
    <div class="big">这次想补哪种能力？</div>
-   <p class="muted">行业声望 ${S.reputation} · ${talentCopy}。不同岗位会改变四维能力；小团队扩张时，普通新人也可能暂时稀释原来的能力密度。</p>
+   <p class="muted">行业声望 ${S.reputation} · ${talentCopy}。现在招聘只看人有多强、工资有多贵，职位不再给隐藏能力加成。</p>
    <div class="hire-candidates">
      ${candidates.map((p,i)=>`<div class="hire-card">
        <div class="hire-role">${p.role}</div>
@@ -949,7 +899,7 @@ function showStaffingChoice(o,freeCount){
  const isPitch=o.type==='pitch';
  const freeCost=isPitch?pitchFreeCostFor(o,freeCount):executionFreeCostFor(o,freeCount);
  const share=freeCount/o.people;
- const candidates=projectHireRoles(o,freeCount).map(role=>createHireCandidate(role));
+ const candidates=Array.from({length:freeCount},()=>createHireCandidate());
  const hireFee=candidates.reduce((a,p)=>a+p.salary,0);
  const newPayroll=candidates.reduce((a,p)=>a+p.salary,0);
  const host=document.createElement('div');host.className='overlay';host.id='freeModal';
