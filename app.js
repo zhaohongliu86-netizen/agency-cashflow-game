@@ -9,6 +9,41 @@ const DIFF={
   2026:{name:'2026',label:'最难',desc:'钱少、要求多、Pitch多，客户也会问AI能不能先来一版。',tax:.25,deal:.86,baseWin:-5,opp:3,startCash:100}
 };
 
+// 每8年换一轮行业气候。30年模式会经历前四段；后两段保留给未来继续扩年限。
+const ECON_PHASES=[
+ {key:'good1',label:'景气',deal:1.12,opp:1,mix:[.20,.30],shrink:.12,renewal:.05,
+  news:'预算相对宽松，品牌愿意做更大的年度项目。接下来大单和年框会更常见。',
+  cut:['客户内部突然调整预算优先级：项目继续，但先砍一半做第一阶段。','老板拍板要做，但财务说先别做那么大。预算先收一半。']},
+ {key:'bad1',label:'下行',deal:.80,opp:-1,mix:[.22,.34],shrink:.35,renewal:-.08,
+  news:'客户财务开始收紧。项目案值会缩水，Pitch占比上升，赢了以后被砍预算也更常见。',
+  cut:['财务冻结了一半预算。项目没死，只是突然瘦了一圈。','客户说方向没问题，问题是今年预算只剩一半。']},
+ {key:'flat1',label:'平稳修复',deal:.96,opp:0,mix:[.24,.44],shrink:.22,renewal:.01,
+  news:'市场不再继续往下掉，但客户更看重确定性。年框、续约和能不能稳稳落地开始变重要。',
+  cut:['客户把大项目拆成两阶段，第一阶段只批了一半预算。','项目还做，但客户决定先试半套。预算同步减半。']},
+ {key:'flat2',label:'平淡横盘',deal:.91,opp:0,mix:[.24,.41],shrink:.26,renewal:-.02,
+  news:'市场没明显变好，也没继续恶化。新业务更看关系、交付记录和价格，预算增长有限。',
+  cut:['采购重新算了一遍账：预算砍一半，KPI暂时没听说要砍。','客户说先做轻一点。翻译成人话：钱只批了一半。']},
+ {key:'bad2',label:'再度下行',deal:.76,opp:-1,mix:[.22,.32],shrink:.38,renewal:-.10,
+  news:'又一轮收缩开始。客户更爱比稿、更爱压价，也更容易在赢稿后临时缩水。',
+  cut:['大环境不好，客户直接把预算砍成半份。','赢是赢了，预算委员会又把项目切了一刀，只剩一半。']},
+ {key:'good2',label:'重新景气',deal:1.15,opp:1,mix:[.19,.50],shrink:.10,renewal:.06,
+  news:'预算重新活跃，品牌开始恢复长期投入。大项目、主动邀约和续约机会都会更友好。',
+  cut:['客户想先小规模启动，预算暂时按一半批。','项目确定要做，但第一阶段只先放一半预算。']}
+];
+function economyPhase(year=S?.year||1){
+ const idx=Math.floor((Math.max(1,year)-1)/8)%ECON_PHASES.length;
+ return ECON_PHASES[idx];
+}
+function economyBulletin(){
+ const phase=economyPhase();
+ const yearInBlock=((S.year-1)%8)+1;
+ if(yearInBlock===8){
+   const next=ECON_PHASES[(Math.floor((S.year-1)/8)+1)%ECON_PHASES.length];
+   return `行业风向 · ${phase.label}尾声：${phase.news} 业内已经开始预期下一年转入“${next.label}”。`;
+ }
+ return `行业风向 · ${phase.label}：${phase.news}`;
+}
+
 const baseTeam=[
  ['老板','老板','创意',3.0,88],['策略A','策略','品牌',2.5,82],['客户A','阿康','客户',1.2,67],['客户B','阿康','客户',1.5,72],['客户总监','资深阿康','客户',3.0,84],['文案A','文案','创意',1.1,70],['文案总监','文案总监','创意',3.0,86],['美术A','美术','创意',1.2,73],['美术总监','美术总监','创意',3.0,87],['制片A','制片','制作',2.0,80]
 ].map((x,i)=>({id:`p${i}`,name:x[0],role:x[1],spec:x[2],salary:x[3],skill:x[4],slots:[],tenure:2}));
@@ -32,7 +67,7 @@ function readSavedGame(){
 }
 function normalizeLoadedGame(data){
  const defaults={
-   pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
+   pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
    route:{pitch:0,retainer:0,small:0,free:0},
    records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
  };
@@ -41,6 +76,7 @@ function normalizeLoadedGame(data){
  loaded.records=Object.assign({maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0},loaded.records||{});
  if(!Number.isFinite(loaded.records.maxQuarterProfit))loaded.records.maxQuarterProfit=-Infinity;
  loaded.awaitingYearEnd=!!loaded.awaitingYearEnd;
+ loaded.lastBudgetShrinkYear=Number(loaded.lastBudgetShrinkYear)||0;
  loaded.team=(loaded.team||[]).map(p=>normalizePerson(p));
  loaded.year=clamp(Number(loaded.year)||1,1,MAX_YEARS);
  loaded.quarter=clamp(Number(loaded.quarter)||1,1,4);
@@ -83,7 +119,7 @@ function showSaveToast(title,copy,bad=false){
 }
 function start(diff){
  const d=DIFF[diff];
- S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
+ S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
  S.active.push({id:uid(),name:'老客户A · 日常品牌服务',type:'retainer',value:72,margin:.42,weeks:24,left:24,people:3,quality:70,legacy:true});
  S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
  allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render(); saveGame(false);
@@ -274,14 +310,14 @@ const GOSSIP_BY_ERA={
 function refreshGossip(){
  const pool=[...GOSSIP_COMMON,...(GOSSIP_BY_ERA[S.diff]||[])];
  const shuffled=[...pool].sort(()=>Math.random()-.5);
- S.gossip=shuffled.slice(0,8);
+ S.gossip=[economyBulletin(),...shuffled.slice(0,7)];
  S.gossipIndex=0;
 }
 function gossipHTML(){
  if(!S.gossip||!S.gossip.length)refreshGossip();
  const index=Number.isFinite(S.gossipIndex)?S.gossipIndex%S.gossip.length:0;
  return `<div class="gossip-strip">
-   <div class="gossip-label">圈内小报</div>
+   <div class="gossip-label">圈内小报 · ${economyPhase().label}</div>
    <div class="gossip-single" id="gossipSingle">${S.gossip[index]}</div>
  </div>`;
 }
@@ -327,15 +363,19 @@ function requiredPeople(type,value,duration){
 }
 
 function makeOpportunity(forced=''){
- const d=DIFF[S.diff], cap=unlockCap();
+ const d=DIFF[S.diff], cap=unlockCap(), econ=economyPhase();
  const r=Math.random();
- let type=forced|| (r<.24?'small':r<.43?'retainer':'pitch');
+ let type=forced;
+ if(!type){
+   const [smallCut,retainerCut]=econ.mix;
+   type=r<smallCut?'small':r<retainerCut?'retainer':'pitch';
+ }
  const scaleStep=businessScaleStep();
  let value;
  if(type==='small') value=scaleValueTier([8,15,25,40,60,80,120],scaleStep);
  else if(type==='retainer') value=scaleValueTier([80,120,180,300,500,800,1200,1500,2200,3000],scaleStep);
  else value=scaleValueTier([50,80,120,200,300,500,800,1200,1800,3000,5000],scaleStep);
- value=Math.round(value*d.deal);
+ value=Math.round(value*d.deal*econ.deal);
  value=Math.min(value,cap);
  // 千万级以上业务一律需要比稿，不允许直接接年框。
  if(value>=1000&&type!=='pitch')type='pitch';
@@ -355,10 +395,8 @@ function makeOpportunity(forced=''){
  return {id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,boost:false};
 }
 function renewalChance(morale){
- if(morale<75)return 0;
- if(morale<85)return .25;
- if(morale<95)return .45;
- return .65;
+ let base=morale<75?0:morale<85?.25:morale<95?.45:.65;
+ return clamp(base+economyPhase().renewal,0,.75);
 }
 function maybeCreateRenewal(p){
  if(!p||p.type!=='retainer')return;
@@ -392,7 +430,8 @@ function maybeCreateRenewal(p){
  log(`${baseName} 想续约。团队士气 ${S.morale}，客户愿意继续谈，但毛利从 ${Math.round((p.margin||0)*100)}% 压到 ${Math.round(margin*100)}%。`,'good');
 }
 function genOpp(){
- const n=DIFF[S.diff].opp + (S.reputation>=70?1:0);
+ const econ=economyPhase();
+ const n=Math.max(2,DIFF[S.diff].opp + econ.opp + (S.reputation>=70?1:0));
  S.opp=[];
  for(let i=0;i<n;i++)S.opp.push(makeOpportunity());
  if(S.pendingRenewals&&S.pendingRenewals.length){
@@ -585,6 +624,54 @@ function showPostPitchExecutionChoice(o,selected,freeCount,teamScore){
    finalizePitchExecution(o,selected,freeCount,'free',teamScore);
  };
 }
+function budgetShrinkChance(){
+ return economyPhase().shrink;
+}
+function maybeShowBudgetShrink(o,onContinue){
+ if(!o||o.type!=='pitch'||S.lastBudgetShrinkYear===S.year||Math.random()>=budgetShrinkChance()){
+   onContinue();return;
+ }
+ S.lastBudgetShrinkYear=S.year;
+ const oldValue=o.value;
+ const newValue=Math.max(1,Math.round(oldValue*.5));
+ const oldGross=oldValue*o.margin;
+ const newGross=newValue*o.margin;
+ const phase=economyPhase();
+ const host=document.createElement('div');
+ host.className='overlay budget-cut-overlay';
+ host.id='budgetCutModal';
+ host.innerHTML=`<div class="modal budget-cut-modal">
+   <div class="budget-cut-kicker">BUDGET CUT · ${phase.label}</div>
+   <div class="big">赢了，但预算缩水了。</div>
+   <p>${pick(phase.cut)}</p>
+   <div class="budget-cut-numbers">
+     <span>原案值 <b>${fmt(oldValue)}</b></span>
+     <strong>→</strong>
+     <span>现在只剩 <b>${fmt(newValue)}</b></span>
+   </div>
+   <p class="muted">毛利率不变，但预计项目毛利从 <b>${fmt(oldGross)}</b> 降到 <b>${fmt(newGross)}</b>。人力需求和周期不自动减半。</p>
+   <div class="row budget-cut-actions">
+     <button class="btn" id="acceptBudgetCut">继续做缩水版</button>
+     <button class="btn secondary" id="rejectBudgetCut">算了，不接</button>
+   </div>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#acceptBudgetCut').onclick=()=>{
+   host.remove();
+   o.value=newValue;
+   o.budgetShrunk=true;
+   log(`赢稿后客户把 ${o.name} 从 ${fmt(oldValue)} 砍到 ${fmt(newValue)}。你决定继续做。`,'bad');
+   saveGame(false);
+   onContinue();
+ };
+ host.querySelector('#rejectBudgetCut').onclick=()=>{
+   host.remove();
+   log(`赢稿后 ${o.name} 预算从 ${fmt(oldValue)} 砍到 ${fmt(newValue)}。你决定不接这个缩水项目。`,'muted');
+   saveGame(false);
+   render();
+ };
+}
+
 function takeProject(id,useFree=false){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
  const avail=available();
@@ -665,8 +752,11 @@ function takeProject(id,useFree=false){
    cost:netPitchCost,grossCost:grossPitchCost,pitchFee,pWin,boost,inboundBonus,
    afterClose:()=>{
      if(!won)return;
-     if(freeCount>0&&useFree)showPostPitchExecutionChoice(o,selected,freeCount,teamScore);
-     else finalizePitchExecution(o,selected,0,'internal',teamScore);
+     const continueExecution=()=>{
+       if(freeCount>0&&useFree)showPostPitchExecutionChoice(o,selected,freeCount,teamScore);
+       else finalizePitchExecution(o,selected,0,'internal',teamScore);
+     };
+     maybeShowBudgetShrink(o,continueExecution);
    }
  }));
 }
@@ -705,28 +795,35 @@ function showPitchSuspense(o,onDone){
  setTimeout(()=>{host.remove();onDone()},total);
 }
 
+function weightedPick(items){
+ const total=items.reduce((a,x)=>a+x.w,0);
+ let r=Math.random()*total;
+ for(const item of items){r-=item.w;if(r<=0)return item.text}
+ return items[items.length-1].text;
+}
 function pitchResultFeedback(won){
- const winCopy=[
-   '客户说方向很清楚。翻译成人话：这次真选你。',
-   '群里突然开始讨论执行细节。好消息，这通常意味着你赢了。',
-   '提案结束时没人鼓掌。第二天合同来了。',
-   '客户终于不说“我们内部再看看”了。',
-   '这次不是陪跑。会议室里的空气都贵了一点。',
-   '大老板点了头。前面那些改到凌晨的页，突然都有了名字。',
-   '客户开始问什么时候能开工。比一句“不错”值钱多了。',
-   '竞品还在等反馈，你已经开始排执行人力。'
- ];
- const loseCopy=[
-   '客户说两个方向都很好。通常这句话后面就没你了。',
-   '谢谢参与。四个字，足够让几十页PPT瞬间失重。',
-   '客户说不是创意的问题。至于是什么问题，没有人知道。',
-   '方案留在了客户电脑里，项目没有留在公司里。',
-   '群里最后一句是“辛苦大家”。没有然后了。',
-   '客户选择了另一家。你的PPT获得了完整阅读，但没有收入。',
-   '大老板觉得都不错，然后选了别人。',
-   '这次陪跑结束。至少内部员工的工资本来就要发。'
- ];
- return pick(won?winCopy:loseCopy);
+ if(won){
+   return pick([
+     '客户说方向很清楚。翻译成人话：这次真选你。',
+     '群里突然开始讨论执行细节。好消息，这通常意味着你赢了。',
+     '提案结束时没人鼓掌。第二天合同来了。',
+     '客户终于不说“我们内部再看看”了。',
+     '这次不是陪跑。会议室里的空气都贵了一点。',
+     '大老板点了头。前面那些改到凌晨的页，突然都有了名字。',
+     '客户开始问什么时候能开工。比一句“不错”值钱多了。',
+     '竞品还在等反馈，你已经开始排执行人力。'
+   ]);
+ }
+ // 游戏化权重，不冒充行业统计。常见的“创意/落地不匹配、商务标”更高频。
+ return weightedPick([
+   {w:6,text:'被骗稿了。你的方向很受欢迎，只是最后执行它的人不是你。'},
+   {w:8,text:'资质审核没过。所有人只剩一个问题：为什么不早说？'},
+   {w:18,text:'技术标第一，商务标没过。创意赢了，价格没赢。'},
+   {w:14,text:'项目取消。不是输给对手，是客户自己把项目关了。'},
+   {w:8,text:'客户反馈非常直接：“这是提的啥啊？” 会议室里短暂失去语言。'},
+   {w:23,text:'客户说创意很好，但落地性不够。翻译：喜欢，但不敢买。'},
+   {w:23,text:'客户说落地性很好，但创意不够。翻译：能做，但不想买。'}
+ ]);
 }
 
 function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0,boost=0,inboundBonus=0,afterClose=null}){
@@ -1200,7 +1297,7 @@ function render(){
      <small>${usedNow} 槽正在被项目占用 · 资深可双开</small>
    </div>
  </div>
- <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
+ <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div><div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>每8年切换 · 会影响案值、机会、Pitch与缩水风险</small></div></div>
  <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
    <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button>
    <div class="quarter-action-copy">
