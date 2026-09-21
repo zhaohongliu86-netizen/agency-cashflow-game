@@ -142,6 +142,21 @@ function capabilityDelta(candidate){
  return delta;
 }
 
+function reputationLabel(score=S?.reputation||0){
+ if(score>=90)return '行业顶流';
+ if(score>=75)return '很有名';
+ if(score>=60)return '圈内有名';
+ if(score>=40)return '有些名气';
+ return '还没什么人认识';
+}
+function agencyType(){
+ const caps=companyCapabilities();
+ const entries=Object.entries(caps).sort((a,b)=>b[1]-a[1]);
+ if(entries[0][1]-entries[3][1]<=5)return '综合型Agency';
+ const map={strategy:'策略型Agency',creative:'创意热店',service:'客户服务型Agency',execution:'整合执行型Agency'};
+ return map[entries[0][0]]||'综合型Agency';
+}
+
 function openingProjects(scaleKey){
  const defs={
    boutique6:[
@@ -1400,7 +1415,7 @@ function showTwelveYearRetirement(){
    <p>标准模式到这里正式结算。你可以把这家公司留在第12年，也可以进入长青模式，继续经营到第${MAX_YEARS}年。</p>
    <div class="personal-records">
      <div><span>累计利润</span><b>${fmt(S.profit)}</b></div>
-     <div><span>累计收入</span><b>${fmt(S.revenue)}</b></div>
+     <div><span>行业声望</span><b>${S.reputation}分</b></div>
      <div><span>最大单</span><b>${fmt(S.records?.maxDeal||0)}</b></div>
      <div><span>最高单季利润</span><b>${fmt(q)}</b></div>
      <div><span>最长连胜</span><b>×${S.records?.maxWinStreak||0}</b></div>
@@ -1451,6 +1466,7 @@ function showMilestoneSummary(){
    <p class="muted">${S.evergreen?'长青模式继续经营中。':'标准模式第12年退休结算之前，每3年看一次公司变成了什么。'}</p>
    <div class="personal-records">
      <div><span>累计利润</span><b>${fmt(S.profit)}</b></div>
+     <div><span>行业声望</span><b>${S.reputation}分</b></div>
      <div><span>最大单</span><b>${fmt(S.records?.maxDeal||0)}</b></div>
      <div><span>最高单季利润</span><b>${fmt(q)}</b></div>
      <div><span>最长连胜</span><b>×${S.records?.maxWinStreak||0}</b></div>
@@ -1607,9 +1623,10 @@ async function benchmarkHit(action,key){
  }catch(e){return false}
 }
 async function getPeerBenchmark(){
- const action=`result-${S.diff}-y${S.year}`;
+ const cohort=S.scale||S.diff;
+ const action=`result-${cohort}-y${S.year}`;
  const bucket=profitBucketIndex(S.profit);
- const storageKey=`agencyBenchmarkSubmitted-${S.diff}-y${S.year}-v2`;
+ const storageKey=`agencyBenchmarkSubmitted-${cohort}-y${S.year}-v3`;
  let submitted=false;
  try{submitted=localStorage.getItem(storageKey)==='1'}catch(e){}
  if(!submitted){
@@ -1678,7 +1695,8 @@ function showEnding(reason){
  host.innerHTML=`<div class="modal ending">
    <div class="big">${title}</div>
    <p>${desc}</p>
-   <div class="peer-benchmark" id="peerBenchmark"><span>同行战绩</span><b>正在读取实际玩家样本…</b></div>
+   <div class="ending-dual"><div><span>经营成绩</span><b>${fmt(S.profit)}</b><small>累计利润</small></div><div><span>行业位置</span><b>${S.reputation}分</b><small>${reputationLabel()} · ${agencyType()}</small></div></div>
+   <div class="peer-benchmark" id="peerBenchmark"><span>利润同行战绩</span><b>正在读取实际玩家样本…</b></div>
    <div class="personal-records">
      <div><span>最大单</span><b>${fmt(S.records?.maxDeal||0)}</b></div>
      <div><span>最高单季经营利润</span><b>${fmt(Number.isFinite(S.records?.maxQuarterProfit)?S.records.maxQuarterProfit:0)}</b></div>
@@ -1694,7 +1712,7 @@ function showEnding(reason){
  getPeerBenchmark().then(r=>{
    const el=document.getElementById('peerBenchmark');if(!el)return;
    if(!r){el.innerHTML='<span>同行战绩</span><b>实际玩家样本暂时读取失败</b>';return}
-   el.innerHTML=`<span>同行战绩 · ${S.diff} · ${S.year}年</span><b>打败了 ${r.pct}% 的同行</b><small>基于 ${r.total} 位相同经营年数的实际玩家匿名成绩</small>`;
+   el.innerHTML=`<span>利润同行战绩 · ${startScale().name} · ${S.year}年</span><b>利润打败了 ${r.pct}% 的同规模玩家</b><small>基于 ${r.total} 位相同经营年数的实际玩家匿名成绩</small>`;
  });
 }
 
@@ -1704,21 +1722,30 @@ function render(){
  const avail=available().length;
  const freeSlotsNow=totalFreeSlots(),capacityNow=totalCapacity(),usedNow=usedCapacity();
  const scaleStep=businessScaleStep(),band=businessScaleBand(),nextBand=nextScaleAt();
- app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年${isAnnualMode()?' · 年度经营':` Q${S.quarter}`} · ${S.evergreen?`长青模式 / 最多${MAX_YEARS}年`:`标准模式 / ${STANDARD_YEARS}年退休`} · 每3年阶段结算</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
+ const caps=companyCapabilities(),profitRate=S.revenue?S.profit/S.revenue*100:0;
+ app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${startScale().name} · 第${S.year}年${isAnnualMode()?' · 年度经营':` Q${S.quarter}`} · ${S.evergreen?`长青模式 / 最多${MAX_YEARS}年`:`标准模式 / ${STANDARD_YEARS}年退休`}</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招聘</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
  <div class="core-stats">
    <div class="core-stat profit-core ${S.profit<0?'negative-profit':''}">
      <span>累计利润</span>
      <b>${fmt(S.profit)}</b>
-     <small>收入 ${fmt(S.revenue)} · 现金 ${fmt(S.cash)}</small>
+     <small>利润率 ${profitRate.toFixed(1)}% · 累计收入 ${fmt(S.revenue)}</small>
+   </div>
+   <div class="core-stat reputation-core">
+     <span>行业声望</span>
+     <b>${S.reputation}<em>分</em></b>
+     <small>${reputationLabel()} · 高声望会带来更多主动邀约</small>
    </div>
    <div class="core-stat manpower-core">
      <span>可用人力</span>
      <b>${freeSlotsNow}<em>/ ${capacityNow}</em></b>
      <div class="manpower-meter"><i style="width:${capacityNow?Math.round((freeSlotsNow/capacityNow)*100):0}%"></i></div>
-     <small>${usedNow} 槽正在被项目占用 · 资深 ${seniorCount()}/${S.team.length}（${Math.round(seniorRatio()*100)}%）· 资深可双开</small>
+     <small>${usedNow} 槽被项目占用 · 资深仍可双开，但不再决定接单资格</small>
    </div>
  </div>
- <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div><div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格指数 ×${projectPriceIndex().toFixed(2)} · 每年案值约+3%</small></div></div>
+ <div class="capability-strip">
+   ${Object.entries(CAPABILITY_META).map(([k,m])=>`<div class="capability"><span>${m.label}</span><b>${caps[k]}</b><i><u style="width:${caps[k]}%"></u></i></div>`).join('')}
+ </div>
+ <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${profitRate.toFixed(1)}%</b><span>累计利润率</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档</small></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div><div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格指数 ×${projectPriceIndex().toFixed(2)}</small></div></div>
  <div class="grid"><main class="panel"><h2>${isAnnualMode()?'这一年，生意自己不会长出来':'这季度，生意自己不会长出来'}</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
    <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">${isAnnualMode()?'推进这一年 →':'推进一季度 →'}</button>
    <div class="quarter-action-copy">
@@ -1744,8 +1771,9 @@ function cardHTML(o){
  const moraleGate=moraleGateInfo(o.value);
  const moraleLocked=!moraleGate.ok;
  const staffingNote=lack?` · 缺 ${lack} 人`:'';
+ const match=projectMatch(o);
  const secondLine=isPitch
-   ? `${o.inbound?'主动邀约 · 胜率额外 +12% · ':o.renewal?'千万级续约也需重新比稿 · ':''}比稿期 ${o.pitchWeeks}周 · 基础赢率约 ${35+DIFF[S.diff].baseWin}%${staffingNote}`
+   ? `${o.inbound?'主动邀约 · ':o.renewal?'续约也需重新比稿 · ':''}比稿期 ${o.pitchWeeks}周${staffingNote}`
    : `${o.renewal?'老客户续约 · 毛利被压低 · ':''}无需比稿 · 直接接单${staffingNote}`;
  const feeLine=isPitch&&o.pitchFee>0?`<br>2016 比稿费 ${fmt(o.pitchFee)} · 无论输赢`:'';
  const durationLine=isPitch
@@ -1760,15 +1788,19 @@ function cardHTML(o){
    ? `<div class="senior-requirement ${moraleLocked?'senior-short':'senior-ok'}">士气门槛 ${moraleGate.required} · 当前 ${moraleGate.current}</div>`
    : '';
  const expectedMargin=o.value*o.margin;
- return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div><div class="meta">${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'团队士气不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
+ return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div><div class="project-fit ${match.score>=76?'fit-good':match.score<67?'fit-bad':''}"><span>项目更看重</span><b>${projectNeedLabel(o)}</b><strong>${match.label} · ${match.score}</strong></div><div class="meta">${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'团队士气不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码提案 · 胜率 +5~12%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
  const save=readSavedGame();
+ const saveScale=save&&START_SCALES[save.scale]?START_SCALES[save.scale].name:(save?((save.team||[]).length+'人旧版公司'):'');
  const saveBlock=save?`<div class="continue-save">
-   <div><span>本机存档</span><b>第 ${save.year} 年${save.year>=8&&save.quarter===1?' · 年度经营':` Q${save.quarter}`} · ${save.diff}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · ${(save.team||[]).length} 人</small></div>
+   <div><span>本机存档</span><b>第 ${save.year} 年${save.year>=8&&save.quarter===1?' · 年度经营':` Q${save.quarter}`} · ${saveScale}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · 声望 ${Number(save.reputation)||0}</small></div>
    <div class="row"><button class="btn" onclick="loadSavedGame()">继续经营 →</button><button class="btn secondary" onclick="deleteSaveFromStart()">删除存档</button></div>
  </div>`:'';
- return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>把一家广告公司开过12年。第3、6、9年阶段结算，第12年正式退休；退休后还可以选择进入长青模式。</p>${saveBlock}<div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">前7年按季度经营；第8年起自动加速为一年一个经营回合。标准模式第12年退休，可随时存档。</p></div></div>`;
+ const projectHints={boutique6:'小单与300万级以内机会更多',growth20:'中型年框与Pitch最均衡',integrated40:'大客户、大Pitch出现更频繁'};
+ return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>选一个你要接手的公司。规模不同，初始团队、现金、老客户和市场喂给你的项目都会不同。</p>${saveBlock}<div class="scale-start">
+   ${Object.values(START_SCALES).map(p=>`<div class="scale-choice" onclick="start('${p.key}')"><span>START WITH</span><strong>${p.name}</strong><small>${p.desc}</small><div class="scale-choice-meta"><b>初始声望 ${p.startRep}</b><b>现金 ${fmt(p.startCash)}</b><b>${projectHints[p.key]}</b></div></div>`).join('')}
+ </div><p class="footer">利润和声望是两条独立成绩线。前7年按季度经营，第8年起按年度经营，第12年标准退休。</p></div></div>`;
 }
 render();
