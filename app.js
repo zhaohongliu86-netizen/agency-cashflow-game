@@ -124,8 +124,50 @@ function start(diff){
  S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
  allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render(); saveGame(false);
 }
+function isSenior(p){
+ return p.role==='老板'||p.role.includes('总监')||p.role.includes('资深')||p.skill>=84;
+}
 function capacity(p){
- return (p.role==='老板'||p.role.includes('总监')||p.role.includes('资深')||p.skill>=84)?2:1;
+ return isSenior(p)?2:1;
+}
+function seniorCount(){return S.team.filter(isSenior).length}
+function seniorRatio(){return S.team.length?seniorCount()/S.team.length:0}
+function requiredSeniorRatio(value){
+ if(value>=3000)return .35;
+ if(value>=1000)return .30;
+ if(value>=500)return .25;
+ return 0;
+}
+function seniorGateInfo(value){
+ const required=requiredSeniorRatio(value);
+ const current=seniorRatio();
+ const needed=Math.ceil(S.team.length*required);
+ return {required,current,needed,have:seniorCount(),ok:required===0||current+1e-9>=required};
+}
+function showSeniorGate(o){
+ const info=seniorGateInfo(o.value);
+ const old=document.getElementById('seniorGateModal');if(old)old.remove();
+ const host=document.createElement('div');
+ host.className='overlay senior-gate-overlay';
+ host.id='seniorGateModal';
+ const missing=Math.max(0,info.needed-info.have);
+ const explain=missing
+   ? '还差约 '+missing+' 名资深人员。老板、总监、资深职位，或能力值达到 84 的正式员工，都计入资深。'
+   : '当前比例刚好够，但团队变化后仍会再次检查。';
+ host.innerHTML=`<div class="modal senior-gate-modal">
+   <div class="senior-gate-kicker">ORGANIZATION CHECK</div>
+   <div class="big">这单，公司还接不住。</div>
+   <p><b>${o.name}</b> 案值 ${fmt(o.value)}，要求正式团队中至少 <b>${Math.round(info.required*100)}%</b> 是资深人员。</p>
+   <div class="senior-gate-numbers">
+     <div><span>当前资深</span><b>${info.have} / ${S.team.length}</b><small>${Math.round(info.current*100)}%</small></div>
+     <strong>→</strong>
+     <div><span>最低要求</span><b>${info.needed} 人</b><small>${Math.round(info.required*100)}%</small></div>
+   </div>
+   <p class="muted">${explain}</p>
+   <button class="btn" id="closeSeniorGate">先把班底补起来</button>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#closeSeniorGate').onclick=()=>host.remove();
 }
 function normalizePerson(p){
  if(!Array.isArray(p.slots))p.slots=p.busy>0?[p.busy]:[];
@@ -452,6 +494,7 @@ function pitchFreeCostFor(o,freeCount){
 }
 function requestProject(id){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
+ if(!seniorGateInfo(o.value).ok){showSeniorGate(o);return}
  const lack=Math.max(0,o.people-available().length);
  if(lack>0){showStaffingChoice(o,lack);return}
  takeProject(id,false);
@@ -674,6 +717,7 @@ function maybeShowBudgetShrink(o,onContinue){
 
 function takeProject(id,useFree=false){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
+ if(!seniorGateInfo(o.value).ok){showSeniorGate(o);return}
  const avail=available();
  const internal=Math.min(avail.length,o.people);
  const freeCount=Math.max(0,o.people-internal);
@@ -1302,7 +1346,7 @@ function render(){
      <span>可用人力</span>
      <b>${freeSlotsNow}<em>/ ${capacityNow}</em></b>
      <div class="manpower-meter"><i style="width:${capacityNow?Math.round((freeSlotsNow/capacityNow)*100):0}%"></i></div>
-     <small>${usedNow} 槽正在被项目占用 · 资深可双开</small>
+     <small>${usedNow} 槽正在被项目占用 · 资深 ${seniorCount()}/${S.team.length}（${Math.round(seniorRatio()*100)}%）· 资深可双开</small>
    </div>
  </div>
  <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div><div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>每8年切换 · 会影响案值、机会、Pitch与缩水风险</small></div></div>
@@ -1328,6 +1372,8 @@ function durationLabel(weeks){
 function cardHTML(o){
  const lack=Math.max(0,o.people-available().length);
  const isPitch=o.type==='pitch';
+ const seniorGate=seniorGateInfo(o.value);
+ const seniorLocked=!seniorGate.ok;
  const staffingNote=lack?` · 缺 ${lack} 人`:'';
  const secondLine=isPitch
    ? `${o.inbound?'主动邀约 · 胜率额外 +12% · ':o.renewal?'千万级续约也需重新比稿 · ':''}比稿期 ${o.pitchWeeks}周 · 基础赢率约 ${35+DIFF[S.diff].baseWin}%${staffingNote}`
@@ -1341,7 +1387,10 @@ function cardHTML(o){
  const manpowerPreview=isPitch
    ? `赢稿执行将占用约 ${internalUse} 人力槽`
    : `接下后约剩 ${remaining} 人力槽`;
- return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
+ const seniorLine=seniorGate.required
+   ? `<div class="senior-requirement ${seniorLocked?'senior-short':'senior-ok'}">资深门槛 ${Math.round(seniorGate.required*100)}% · 当前 ${Math.round(seniorGate.current*100)}%（${seniorGate.have}/${S.team.length}）</div>`
+   : '';
+ return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${seniorLine}<div class="row" style="margin-top:10px"><button class="btn ${seniorLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${seniorLocked?'资深比例不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${seniorLocked?'disabled':''}>${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
