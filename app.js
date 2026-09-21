@@ -18,12 +18,72 @@ const roles=['阿康','文案','美术','策略','制片'];
 
 let S=null;
 let gossipTimer=null;
+const MAX_YEARS=30;
+const SAVE_KEY='agency-cashflow-save-v1';
+
+function readSavedGame(){
+ try{
+   const raw=localStorage.getItem(SAVE_KEY);
+   if(!raw)return null;
+   const data=JSON.parse(raw);
+   if(!data||!DIFF[data.diff]||!Number.isFinite(data.year))return null;
+   return data;
+ }catch(e){return null}
+}
+function normalizeLoadedGame(data){
+ const defaults={
+   pendingHires:[],pendingRenewals:[],qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
+   route:{pitch:0,retainer:0,small:0,free:0},
+   records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
+ };
+ const loaded=Object.assign(defaults,data);
+ loaded.route=Object.assign({pitch:0,retainer:0,small:0,free:0},loaded.route||{});
+ loaded.records=Object.assign({maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0},loaded.records||{});
+ loaded.team=(loaded.team||[]).map(p=>normalizePerson(p));
+ loaded.year=clamp(Number(loaded.year)||1,1,MAX_YEARS);
+ loaded.quarter=clamp(Number(loaded.quarter)||1,1,4);
+ loaded.ended=false;
+ return loaded;
+}
+function saveGame(showFeedback=false){
+ if(!S||S.ended)return;
+ try{
+   const payload=JSON.stringify(S,(k,v)=>typeof v==='number'&&!Number.isFinite(v)?null:v);
+   localStorage.setItem(SAVE_KEY,payload);
+   if(showFeedback)showSaveToast('已存档',`第 ${S.year} 年 Q${S.quarter} · ${fmt(S.profit)}`);
+ }catch(e){
+   if(showFeedback)showSaveToast('存档失败','浏览器没有允许本地存储。',true);
+ }
+}
+function manualSave(){saveGame(true)}
+function clearSave(){
+ try{localStorage.removeItem(SAVE_KEY)}catch(e){}
+}
+function deleteSaveFromStart(){
+ clearSave();S=null;render();
+}
+function loadSavedGame(){
+ const data=readSavedGame();
+ if(!data)return;
+ S=normalizeLoadedGame(data);
+ render();
+ showSaveToast('存档已读取',`继续第 ${S.year} 年 Q${S.quarter}`);
+}
+function showSaveToast(title,copy,bad=false){
+ const old=document.querySelector('.save-toast');if(old)old.remove();
+ const host=document.createElement('div');
+ host.className=`save-toast ${bad?'save-toast-bad':''}`;
+ host.innerHTML=`<b>${title}</b><span>${copy}</span>`;
+ document.body.appendChild(host);
+ setTimeout(()=>host.classList.add('result-leave'),1600);
+ setTimeout(()=>host.remove(),2100);
+}
 function start(diff){
  const d=DIFF[diff];
  S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
  S.active.push({id:uid(),name:'老客户A · 日常品牌服务',type:'retainer',value:72,margin:.42,weeks:24,left:24,people:3,quality:70,legacy:true});
  S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
- allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render();
+ allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render(); saveGame(false);
 }
 function capacity(p){
  return (p.role==='老板'||p.role.includes('总监')||p.role.includes('资深')||p.skill>=84)?2:1;
@@ -431,6 +491,7 @@ function startDirectExecution(o,selected,freeCount,freeCost,teamScore){
  S.opp=S.opp.filter(x=>x.id!==o.id);
  const manpowerAfter=totalFreeSlots();
  render();
+ saveGame(false);
  showManpowerDelta(manpowerBefore,manpowerAfter,`${o.name} 进入执行`);
  showProjectResult({won:true,type:o.type,name:o.name,value:o.value,cost:freeCost,pWin:null});
 }
@@ -463,6 +524,7 @@ function finalizePitchExecution(o,selected,freeCount,mode,teamScore){
  S.reputation=clamp(S.reputation+(quality>82?3:quality<62?-2:1),0,100);
  const manpowerAfter=totalFreeSlots();
  render();
+ saveGame(false);
  showManpowerDelta(manpowerBefore,manpowerAfter,`${o.name} 开始执行`);
 }
 function showPostPitchExecutionChoice(o,selected,freeCount,teamScore){
@@ -512,6 +574,7 @@ function showPostPitchExecutionChoice(o,selected,freeCount,teamScore){
    log(`赢稿后把 ${freeCount} 个 Free 转正。转正成本 ${fmt(actualFee)}，每月固定工资 +${fmt(actualMonthly)}。`,'good');
    const manpowerAfter=totalFreeSlots();
    render();
+   saveGame(false);
    showManpowerDelta(manpowerBefore,manpowerAfter,`Free 转正并投入 ${o.name}`);
  };
  host.querySelector('#continueFree').onclick=()=>{
@@ -592,6 +655,7 @@ function takeProject(id,useFree=false){
 
  S.opp=S.opp.filter(x=>x.id!==id);
  render();
+ if(!won)saveGame(false);
 
  showPitchSuspense(o,()=>showProjectResult({
    won,type:o.type,name:o.name,value:o.value,
@@ -774,7 +838,7 @@ function resolveQuarter(){
      yearEnd();
      return;
    }
-   S.quarter++;S.week+=12;genOpp();render();
+   S.quarter++;S.week+=12;genOpp();render();saveGame(false);
  };
  render();
  showManpowerDelta(manpowerBefore,manpowerAfter,atYearEnd?'季度结束，人力释放 / 新人到岗':'季度推进，人力释放 / 新人到岗');
@@ -842,11 +906,48 @@ function showYearFeedback({bonus,party,bonusCost,partyCost,tax,feedback,onContin
      <span>${partyName} <b>${fmt(partyCost)}</b></span>
      <span>纳税 <b>${fmt(tax)}</b></span>
    </div>
-   <button class="btn" id="continueAfterYear">${S.year>=3?'看三年结算':'进入下一年 →'}</button>
+   <button class="btn" id="continueAfterYear">${S.year>=MAX_YEARS?`看${MAX_YEARS}年最终结算`:S.year%3===0?`看第${S.year}年阶段结算`:'进入下一年 →'}</button>
  </div>`;
  document.body.appendChild(host);
  host.querySelector('#continueAfterYear').onclick=()=>{host.remove();onContinue()};
 }
+function advanceToNextYear(){
+ if(S.year>=MAX_YEARS){endGame();return}
+ S.year++;
+ S.quarter=1;
+ S.week+=12;
+ genOpp();
+ render();
+ saveGame(false);
+}
+function showMilestoneSummary(){
+ const host=document.createElement('div');
+ host.className='overlay milestone-overlay';
+ host.id='milestoneModal';
+ const roi=S.revenue?S.profit/S.revenue*100:0;
+ const q=Number.isFinite(S.records?.maxQuarterProfit)?S.records.maxQuarterProfit:0;
+ host.innerHTML=`<div class="modal milestone-card">
+   <div class="milestone-kicker">第 ${S.year} 年 · 阶段结算</div>
+   <div class="big">${S.year} 年了，公司还在。</div>
+   <p class="muted">最初只想活三年。现在可以继续，最多经营到第 ${MAX_YEARS} 年。</p>
+   <div class="personal-records">
+     <div><span>累计利润</span><b>${fmt(S.profit)}</b></div>
+     <div><span>最大单</span><b>${fmt(S.records?.maxDeal||0)}</b></div>
+     <div><span>最高单季利润</span><b>${fmt(q)}</b></div>
+     <div><span>最长连胜</span><b>×${S.records?.maxWinStreak||0}</b></div>
+     <div><span>最大团队</span><b>${S.records?.maxTeam||S.team.length}人</b></div>
+     <div><span>利润率</span><b>${roi.toFixed(1)}%</b></div>
+   </div>
+   <div class="milestone-actions">
+     <button class="btn" id="continueMilestone">继续开下去 →</button>
+     <button class="btn secondary" id="finishMilestone">就到这里，结算成绩</button>
+   </div>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#continueMilestone').onclick=()=>{host.remove();advanceToNextYear()};
+ host.querySelector('#finishMilestone').onclick=()=>{host.remove();S.ended=true;clearSave();showEnding('retired')};
+}
+
 function closeYear(bonus,party){
  const bonusCost=payroll()*bonus;
  const partyCost=party===0?0:party===1?S.team.length*.3:S.team.length*.8;
@@ -863,8 +964,9 @@ function closeYear(bonus,party){
  showYearFeedback({
    bonus,party,bonusCost,partyCost,tax,feedback,
    onContinue:()=>{
-     if(S.year>=3){endGame();return}
-     S.year++;S.quarter=1;S.week+=12;genOpp();render();
+     if(S.year>=MAX_YEARS){endGame();return}
+     if(S.year%3===0){showMilestoneSummary();return}
+     advanceToNextYear();
    }
  });
 }
@@ -926,6 +1028,7 @@ function executeLayoffs(ids){
  log(`裁掉 ${people.length} 人，赔偿 ${fmt(cost)}。${busy?`其中 ${busy} 人仍在项目上，士气和声望受损。`:''}`,'bad');
  if(host)host.remove();
  render();
+ saveGame(false);
  const afterBand=businessScaleBand(S.team.length);
  if(afterBand<businessScaleBand(before))log(`公司缩到 ${afterBand} 人档，之后新刷新的业务规模也会随之下降。`,'muted');
 }
@@ -950,6 +1053,7 @@ function hire(){
  S.pendingHires.push({person});
  log(`签下 ${person.name}（${role}），月薪 ${fmt(salary)}。招聘费 ${fmt(fee)}，下季度到岗。公司每多 5 个正式员工，之后新刷的业务案值整体上一个档位。`,'good');
  render();
+ saveGame(false);
  showHireIncentive(1);
 }
 const PROFIT_BUCKETS=[-1000,-500,-300,-200,-100,-50,0,50,100,200,300,500,800,1200,1800,2500,3500,5000,7500,10000,Infinity];
@@ -1006,14 +1110,15 @@ async function getPeerBenchmark(){
  return {pct,total};
 }
 
-function closeCompanyAtYearEnd(){S.ended=true;showEnding('closed')}
-function bankrupt(){S.ended=true;showEnding('bankrupt')}
-function endGame(){S.ended=true;showEnding('complete')}
+function closeCompanyAtYearEnd(){S.ended=true;clearSave();showEnding('closed')}
+function bankrupt(){S.ended=true;clearSave();showEnding('bankrupt')}
+function endGame(){S.ended=true;clearSave();showEnding('complete')}
 function endingText(reason){
  if(reason==='bankrupt')return ['现金流艺术家','你把“无限负债也是一种路线”执行到了最后。银行没被说服。'];
  if(reason==='closed')return S.profit<0
    ? ['及时止损者','年关到了，你决定把门关上。至少亏损没有继续长大。']
    : ['见好就收','公司还能开，但你决定在这一年结束时收手。'];
+ if(reason==='retired')return ['阶段毕业','公司还可以继续，但你决定把这一段经营史定格在这里。'];
  const n=S.team.length,p=S.profit;
  if(n<=14&&p>800)return ['精品店老板','人没怎么长，利润倒长得很快。你相信少开会，多收钱。'];
  if(S.route.retainer>S.route.pitch*1.3)return ['年框地主','别人追热点，你收租。最大的创意，是让客户每年都续。'];
@@ -1075,7 +1180,7 @@ function render(){
  const avail=available().length;
  const freeSlotsNow=totalFreeSlots(),capacityNow=totalCapacity(),usedNow=usedCapacity();
  const scaleStep=businessScaleStep(),band=businessScaleBand(),nextBand=nextScaleAt();
- app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · 144周都在后台跑，你只做12次大决定</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
+ app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · 最多经营${MAX_YEARS}年 · 每3年一次阶段结算</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
  <div class="core-stats">
    <div class="core-stat profit-core ${S.profit<0?'negative-profit':''}">
      <span>累计利润</span>
@@ -1128,5 +1233,12 @@ function cardHTML(o){
  return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
-function startHTML(){return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>你有三年。客户不保证续约，Pitch不保证赢，员工不保证不跑。唯一保证的是工资每年涨10%。</p><div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">一局约 5–8 分钟。目标不是找到最优解，而是看看你会把公司经营成什么东西。</p></div></div>`}
+function startHTML(){
+ const save=readSavedGame();
+ const saveBlock=save?`<div class="continue-save">
+   <div><span>本机存档</span><b>第 ${save.year} 年 Q${save.quarter} · ${save.diff}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · ${(save.team||[]).length} 人</small></div>
+   <div class="row"><button class="btn" onclick="loadSavedGame()">继续经营 →</button><button class="btn secondary" onclick="deleteSaveFromStart()">删除存档</button></div>
+ </div>`:'';
+ return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>先活过三年。之后你可以一直开，最多经营30年。客户不保证续约，Pitch不保证赢，员工不保证不跑。</p>${saveBlock}<div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">前三年仍是一局约 5–8 分钟；每3年会做一次阶段结算。存档保存在当前浏览器。</p></div></div>`;
+}
 render();
