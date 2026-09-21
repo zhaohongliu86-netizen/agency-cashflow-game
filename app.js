@@ -10,10 +10,10 @@ const DIFF={
 };
 
 const baseTeam=[
- ['Luke','老板','创意',3.0,88],['阿策','策略','品牌',2.5,82],['Mia','阿康','客户',1.2,67],['Kevin','阿康','客户',1.5,72],['Carl','资深阿康','客户',3.0,84],['自然','文案','创意',1.1,70],['老白','文案总监','创意',3.0,86],['佳怡','美术','创意',1.2,73],['小鸣','美术总监','创意',3.0,87],['Producer J','制片','制作',2.0,80]
+ ['老板','老板','创意',3.0,88],['策略A','策略','品牌',2.5,82],['客户A','阿康','客户',1.2,67],['客户B','阿康','客户',1.5,72],['客户总监','资深阿康','客户',3.0,84],['文案A','文案','创意',1.1,70],['文案总监','文案总监','创意',3.0,86],['美术A','美术','创意',1.2,73],['美术总监','美术总监','创意',3.0,87],['制片A','制片','制作',2.0,80]
 ].map((x,i)=>({id:`p${i}`,name:x[0],role:x[1],spec:x[2],salary:x[3],skill:x[4],busy:0}));
 
-const names=['Emma','Ken','阿奇','小满','Nico','Yuki','阿森','Momo','Jack','大可','Lynn','Leo'];
+const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
 const roles=['阿康','文案','美术','策略','制片'];
 
 let S=null;
@@ -148,31 +148,39 @@ function takeProject(id,useFree=false){
  showProjectResult({won,type:o.type,name:o.name,value:o.value,cost:pitchCost+freeCost,pWin});
 }
 function showProjectResult({won,type,name,value,cost,pWin}){
- const old=document.querySelector('.result-flash'); if(old)old.remove();
+ const old=document.getElementById('pitchResultModal'); if(old)old.remove();
+
+ // 年框和散活只做轻提示，不抢占操作。
+ if(type!=='pitch'){
+   const host=document.createElement('div');
+   host.className='result-toast result-win';
+   host.innerHTML=`<b>${type==='retainer'?'年框接下了':'接到了'}</b><span>${name} · ${fmt(value)}</span>`;
+   document.body.appendChild(host);
+   window.setTimeout(()=>host.classList.add('result-leave'),900);
+   window.setTimeout(()=>host.remove(),1250);
+   return;
+ }
+
+ // Pitch 必须明确看到结果，用户手动继续。
  const host=document.createElement('div');
- host.className=`result-flash ${won?'result-win':'result-loss'}`;
- host.setAttribute('role','status');
- host.setAttribute('aria-live','assertive');
- const label=won
-   ? (type==='pitch'?'赢稿！':type==='retainer'?'年框接下了！':'接到了！')
-   : '丢稿。';
- const streak=type==='pitch'
-   ? (won && S.winStreak>1 ? `连续 ${S.winStreak} 次拿下` : (!won && S.lossStreak>1 ? `连续 ${S.lossStreak} 次没拿到` : ''))
-   : '';
- const amount=won ? `案值 ${fmt(value)}` : `本次投入 −${fmt(cost)}`;
- const meta=pWin==null
-   ? (cost>0?`已使用 Free，额外成本 ${fmt(cost)}`:'无需比稿，直接进入执行')
-   : `当时胜率约 ${pWin.toFixed(0)}%${streak?` · ${streak}`:''}`;
- host.innerHTML=`<div class="result-card">
-   <div class="result-kicker">${type==='pitch'?'PITCH RESULT':type==='retainer'?'RETAINER':'PROJECT'}</div>
-   <div class="result-title">${label}</div>
-   <div class="result-project">${name}</div>
-   <div class="result-amount">${amount}</div>
-   <div class="result-meta">${meta}</div>
+ host.className=`overlay pitch-result-overlay ${won?'pitch-win':'pitch-loss'}`;
+ host.id='pitchResultModal';
+ host.setAttribute('role','dialog');
+ host.setAttribute('aria-modal','true');
+ const streak=won && S.winStreak>1
+   ? `连续 ${S.winStreak} 次赢稿`
+   : (!won && S.lossStreak>1 ? `连续 ${S.lossStreak} 次丢稿` : '');
+ host.innerHTML=`<div class="pitch-result-card">
+   <div class="pitch-result-kicker">PITCH RESULT</div>
+   <div class="pitch-result-title">${won?'赢稿！':'丢稿。'}</div>
+   <div class="pitch-result-project">${name}</div>
+   <div class="pitch-result-amount">${won?`拿下 ${fmt(value)}`:`投入损失 ${fmt(cost)}`}</div>
+   <div class="pitch-result-meta">当时胜率约 ${pWin.toFixed(0)}%${streak?` · ${streak}`:''}</div>
+   <button class="btn pitch-result-button" id="closePitchResult">${won?'收下，继续经营':'认了，继续经营'}</button>
  </div>`;
  document.body.appendChild(host);
- window.setTimeout(()=>host.classList.add('result-leave'),1250);
- window.setTimeout(()=>host.remove(),1650);
+ host.querySelector('#closePitchResult').focus();
+ host.querySelector('#closePitchResult').onclick=()=>host.remove();
 }
 function maybeLeave(){
  let risk=.42-clamp((S.morale-50)/130,0,.25); if(Math.random()>risk){log('三连败之后团队情绪低，但这次没人辞职。','muted');return}
