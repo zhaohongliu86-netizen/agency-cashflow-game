@@ -581,6 +581,33 @@ function maybeLeave(){
  const candidates=S.team.filter(p=>p.role!=='老板'); if(!candidates.length)return; const gone=pick(candidates);S.team=S.team.filter(p=>p.id!==gone.id);log(`${gone.name} 提了离职。离职本身不花钱，重新招人才花。`,'bad');
 }
 function boost(id){const o=S.opp.find(x=>x.id===id);if(o){o.boost=!o.boost;render()}}
+function quarterStatusCopy(){
+ if(S.profit>=300)return '账面很绿。现在最危险的是觉得自己不会犯错。';
+ if(S.profit>=0)return '还在盈利。下一季度，继续决定钱该花在哪。';
+ if(S.cash>0)return `已经累计亏损 ${fmt(S.profit)}，但账上还有现金。还能撑，只是每一季都更贵。`;
+ return `利润和现金都已经变红。再推进，就是拿未来换时间。`;
+}
+function showLossDecision(onContinue){
+ const old=document.getElementById('lossDecisionModal');if(old)old.remove();
+ const host=document.createElement('div');
+ host.className='overlay loss-decision-overlay';
+ host.id='lossDecisionModal';
+ host.innerHTML=`<div class="modal loss-decision">
+   <div class="loss-decision-kicker">QUARTERLY REVIEW</div>
+   <div class="big">这家公司还要继续开吗？</div>
+   <div class="loss-decision-number">${fmt(S.profit)}</div>
+   <p>累计利润已经是负数。公司现金还有 <b>${fmt(S.cash)}</b>。</p>
+   <p class="muted">${S.cash>0?'关掉不丢人，继续撑也不是免费的。':'账上已经没什么缓冲了。再撑一季，风险会继续放大。'}</p>
+   <div class="row loss-decision-actions">
+     <button class="btn secondary" id="keepCompany">继续撑</button>
+     <button class="btn warn" id="closeCompany">关掉公司</button>
+   </div>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#keepCompany').onclick=()=>{host.remove();onContinue()};
+ host.querySelector('#closeCompany').onclick=()=>{host.remove();bankrupt()};
+}
+
 function progressQuarter(){
  if(S.ended||document.getElementById('quarterTransition'))return;
  const positive=S.profit>=0;
@@ -621,14 +648,22 @@ function resolveQuarter(){
  }
  log(`Q${S.quarter} 结算：确认毛利 ${fmt(margin)}，工资+办公 ${fmt(salary+office)}。`,margin-salary-office>=0?'good':'bad');
  const manpowerAfter=totalFreeSlots();
- if(S.quarter===4){
-   render();
-   showManpowerDelta(manpowerBefore,manpowerAfter,'季度结束，人力释放 / 新人到岗');
-   yearEnd();
-   return
+ const atYearEnd=S.quarter===4;
+ const continueAfterReview=()=>{
+   if(atYearEnd){
+     render();
+     yearEnd();
+     return;
+   }
+   S.quarter++;S.week+=12;genOpp();render();
+ };
+ render();
+ showManpowerDelta(manpowerBefore,manpowerAfter,atYearEnd?'季度结束，人力释放 / 新人到岗':'季度推进，人力释放 / 新人到岗');
+ if(S.profit<0){
+   showLossDecision(continueAfterReview);
+   return;
  }
- S.quarter++;S.week+=12;genOpp();render();
- showManpowerDelta(manpowerBefore,manpowerAfter,'季度推进，人力释放 / 新人到岗');
+ continueAfterReview();
 }
 function yearEnd(){showYearModal()}
 function yearEndFeedback(bonus,party){
@@ -842,7 +877,14 @@ function render(){
    </div>
  </div>
  <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
- <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div style="margin-top:14px" class="row"><button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button><span class="muted">季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</span></div>
+ <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
+   <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button>
+   <div class="quarter-action-copy">
+     <div class="quarter-profit-line">当前累计利润 <b>${fmt(S.profit)}</b></div>
+     <div class="quarter-status-copy">${quarterStatusCopy()}</div>
+     <small>季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</small>
+   </div>
+ </div>
  <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>工龄</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${Number.isFinite(p.tenure)?p.tenure:2}年</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
  scheduleGossipRotation();
 }
