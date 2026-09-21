@@ -868,20 +868,12 @@ function finalizePitchExecution(o,selected,freeCount,mode,teamScore){
  const freeShare=freeCount/o.people;
  let qualityPenalty=0;
 
- if(mode==='convert'){
-   const converts=projectHireRoles(o,freeCount).map(role=>createHireCandidate(role));
-   const monthly=converts.reduce((a,p)=>a+p.salary,0);
-   const conversionFee=+(monthly*.5).toFixed(1);
-   S.cash-=conversionFee;S.yearSpend+=conversionFee;S.profit-=conversionFee;
-   converts.forEach(p=>{S.team.push(p);assignPerson(p,o.duration)});
-   selected.forEach(p=>assignPerson(p,o.duration));
-   log(`赢稿后把 ${freeCount} 个 Free 转成正式员工。转正成本 ${fmt(conversionFee)}，每月固定工资 +${fmt(monthly)}。`,'good');
- }else if(mode==='free'){
+ if(mode==='free'){
    const executionFreeCost=executionFreeCostFor(o,freeCount);
    S.cash-=executionFreeCost;S.yearSpend+=executionFreeCost;S.profit-=executionFreeCost;S.route.free+=freeCount;
    selected.forEach(p=>assignPerson(p,o.duration));
    qualityPenalty=freeShare*10;
-   log(`赢稿后继续用 ${freeCount} 个 Free 执行 ${durationLabel(o.duration)}，执行期成本 ${fmt(executionFreeCost)}。`,'muted');
+   log(`赢稿后继续用 ${freeCount} 个 Free 执行 ${durationLabel(o.duration)}，执行期成本 ${fmt(executionFreeCost)}。Free 始终是外部资源，不进入正式编制。`,'muted');
  }else{
    selected.forEach(p=>assignPerson(p,o.duration));
  }
@@ -1707,6 +1699,7 @@ function render(){
      <span>行业声望</span>
      <b>${S.reputation}<em>分</em></b>
      <small>${reputationLabel()} · ${reputationImpactText()}</small>
+     <div class="reputation-source">高质量大项目 ↑ · 低质量交付 ↓</div>
    </div>
  </div>
  <div class="capability-strip">
