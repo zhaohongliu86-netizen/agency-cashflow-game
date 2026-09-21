@@ -142,6 +142,29 @@ function capabilityDelta(candidate){
  return delta;
 }
 
+function openingProjects(scaleKey){
+ const defs={
+   boutique6:[
+     ['老客户 · 品牌日常顾问','retainer',90,.36,24,2,74,'service','creative'],
+     ['在做 · 产品内容项目','small',35,.50,12,1,78,'creative','execution']
+   ],
+   growth20:[
+     ['老客户 · 年度品牌服务','retainer',380,.31,48,5,75,'service','strategy'],
+     ['老客户 · 社媒与内容','retainer',220,.34,36,4,73,'creative','service'],
+     ['在做 · 新品传播项目','pitch',260,.38,24,4,77,'creative','strategy']
+   ],
+   integrated40:[
+     ['核心客户 · 年度整合服务','retainer',1000,.28,48,8,76,'service','execution'],
+     ['核心客户 · 品牌年度顾问','retainer',650,.30,48,7,74,'strategy','service'],
+     ['在做 · 大型新品战役','pitch',900,.35,36,8,78,'creative','execution']
+   ]
+ };
+ return (defs[scaleKey]||defs.growth20).map(x=>({
+   id:uid(),name:x[0],type:x[1],value:x[2],margin:x[3],weeks:x[4],left:x[4],people:x[5],quality:x[6],
+   needPrimary:x[7],needSecondary:x[8],legacy:true
+ }));
+}
+
 
 let S=null;
 let gossipTimer=null;
@@ -161,10 +184,14 @@ function readSavedGame(){
 function normalizeLoadedGame(data){
  const defaults={
    pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
-   route:{pitch:0,retainer:0,small:0,free:0},yearStartProfit:0,
+   route:{pitch:0,retainer:0,small:0,free:0},yearStartProfit:0,scale:'growth20',
    records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
  };
  const loaded=Object.assign(defaults,data);
+ if(!START_SCALES[loaded.scale]){
+   const n=(loaded.team||[]).length;
+   loaded.scale=n<=10?'boutique6':n>=32?'integrated40':'growth20';
+ }
  loaded.route=Object.assign({pitch:0,retainer:0,small:0,free:0},loaded.route||{});
  loaded.records=Object.assign({maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0},loaded.records||{});
  if(!Number.isFinite(loaded.records.maxQuarterProfit))loaded.records.maxQuarterProfit=-Infinity;
@@ -216,12 +243,15 @@ function showSaveToast(title,copy,bad=false){
  setTimeout(()=>host.classList.add('result-leave'),1600);
  setTimeout(()=>host.remove(),2100);
 }
-function start(diff){
- const d=DIFF[diff];
- S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:baseTeam.length,projects:0,inboundOffers:0}};
- S.active.push({id:uid(),name:'老客户A · 日常品牌服务',type:'retainer',value:72,margin:.42,weeks:24,left:24,people:3,quality:70,legacy:true});
- S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
- allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render(); saveGame(false);
+function start(scaleKey){
+ const profile=START_SCALES[scaleKey]||START_SCALES.growth20;
+ const team=buildStarterTeam(profile.key);
+ S={diff:'2026',scale:profile.key,year:1,quarter:1,week:1,cash:profile.startCash,profit:0,revenue:0,taxable:0,reputation:profile.startRep,morale:profile.startMorale,team,opp:[],active:openingProjects(profile.key),log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:team.length,projects:0,inboundOffers:0}};
+ allocateLegacy();
+ genOpp();
+ log(`接手 ${profile.name}。利润和声望是两条路，四项能力决定你更擅长哪种生意。`,'');
+ render();
+ saveGame(false);
 }
 function isSenior(p){
  return p.role==='老板'||p.role.includes('总监')||p.role.includes('资深')||p.skill>=84;
@@ -277,11 +307,13 @@ function assignPerson(p,weeks){
  return true;
 }
 function allocateLegacy(){
- let n=5;
- for(const p of S.team){
-   if(n<=0)break;
-   assignPerson(p,24);
-   n--;
+ let cursor=0;
+ for(const project of S.active){
+   let need=Math.min(project.people||0,S.team.length);
+   while(need>0&&cursor<S.team.length){
+     if(assignPerson(S.team[cursor],project.left||project.weeks||12))need--;
+     cursor++;
+   }
  }
 }
 function available(){return S.team.filter(p=>freeSlots(p)>0)}
@@ -297,7 +329,7 @@ function payroll(){return S.team.reduce((a,p)=>a+p.salary,0)}
 function totalCapacity(){return S.team.reduce((a,p)=>a+capacity(p),0)}
 function usedCapacity(){return S.team.reduce((a,p)=>a+activeLoads(p).length,0)}
 function businessScaleStep(n=S.team.length){return Math.max(0,Math.floor((n-10)/5))}
-function businessScaleBand(n=S.team.length){return Math.max(10,Math.floor(n/5)*5)}
+function businessScaleBand(n=S.team.length){return n<10?6:Math.max(10,Math.floor(n/5)*5)}
 function nextScaleAt(n=S.team.length){return (Math.floor(n/5)+1)*5}
 function scaleValueTier(values,step){
  const baseIndex=Math.floor(Math.random()*values.length);
