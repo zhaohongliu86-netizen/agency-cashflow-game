@@ -551,7 +551,7 @@ function toggleResourceBoost(id){
 function extendPitchBoostAssignments(people,pitchWeeks,duration){
  for(const p of people||[]){
    normalizePerson(p);
-   const idx=p.slots.findIndex(w=>w===pitchWeeks);
+   const idx=p.slots.lastIndexOf(pitchWeeks);
    if(idx>=0)p.slots[idx]=duration;
    else assignPerson(p,duration);
  }
@@ -1078,7 +1078,7 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
       : `全用内部员工 · 无额外比稿成本 · 比稿费 +${fmt(pitchFee)}`)
    : (grossCost>0?`本次额外投入 ${fmt(grossCost)}`:'全用内部员工 · 无额外比稿成本');
  const boostLine='';
- const capabilityLine=`${matchBonus?`Pitch Free +${matchBonus}% · `:''}声望信任 ${reputationBonus>=0?'+':''}${reputationBonus}% · 团队 ${staffing>=0?'+':''}${staffing.toFixed(0)}%${moraleBonus?` · 士气 ${moraleBonus>=0?'+':''}${moraleBonus.toFixed(0)}%`:''}${freePenalty?` · Free ${freePenalty}%`:''}`;
+ const capabilityLine=`${matchBonus?`资源加码 +${matchBonus}% · `:''}声望信任 ${reputationBonus>=0?'+':''}${reputationBonus}% · 团队 ${staffing>=0?'+':''}${staffing.toFixed(0)}%${moraleBonus?` · 士气 ${moraleBonus>=0?'+':''}${moraleBonus.toFixed(0)}%`:''}${freePenalty?` · Free ${freePenalty}%`:''}`;
  host.innerHTML=`<div class="pitch-result-card">
    <div class="pitch-result-kicker">${tier?tier.kicker:'PITCH RESULT'}</div>
    <div class="pitch-result-title">${tier?tier.title:(won?'赢稿！':'丢稿。')}</div>
@@ -1718,7 +1718,7 @@ function cardHTML(o){
  const actionLabel=repLocked?`声望 ${req} 才能进`:(isPitch?'去比稿':'接下来');
  return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${level?` · 加码 +${boostPeople}`:''}${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="project-facts"><div class="project-fact project-fact-profit"><span>项目毛利率</span><b>${(o.margin*100).toFixed(0)}%</b><small>预计毛利 ${fmt(expectedMargin)}</small></div><div class="project-fact project-fact-cycle"><span>${isPitch?'赢稿后执行周期':'项目周期'}</span><b>${durationLabel(o.duration)}</b><small>${o.duration} 周</small></div></div>${gateLine}<div class="resource-boost ${level?'resource-boost-on':''}"><span>资源加码</span><b>${boostSummary}</b></div><div class="meta">${secondLine}${feeLine}${fameLine}</div><div class="row" style="margin-top:10px"><button class="btn ${repLocked?'reputation-locked-btn':''}" onclick="requestProject('${o.id}')" ${repLocked?'disabled':''}>${actionLabel}</button><button class="btn secondary" onclick="boost('${o.id}')" ${boostDisabled?'disabled':''}>${boostLabel}</button></div></div>`;
 }
-function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
+function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}${p.resourceBoost?` · 加码${p.resourceBoost}`:''}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
  const save=readSavedGame();
  const saveBlock=save?`<div class="continue-save">
