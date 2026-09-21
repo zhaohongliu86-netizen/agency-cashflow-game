@@ -1653,17 +1653,22 @@ function render(){
      <b>${fmt(S.profit)}</b>
      <small>利润率 ${profitRate.toFixed(1)}% · 累计收入 ${fmt(S.revenue)}</small>
    </div>
-   <div class="core-stat reputation-core" title="高质量的大项目最能提升声望；低质量项目会伤声望。">
+   <div class="core-stat reputation-core" title="项目最终质量决定声望；资源加码会提高质量。">
      <span>行业声望</span>
      <b>${S.reputation}<em>分</em></b>
      <small>${reputationLabel()} · ${reputationImpactText()}</small>
-     <div class="reputation-source">声望在交付后结算：项目声誉值 × 最终质量</div>
+     <div class="reputation-source">高质量交付 ↑ · 低质量交付 ↓ · 资源加码更容易把项目做好</div>
+   </div>
+   <div class="core-stat manpower-core">
+     <span>可用人力</span>
+     <b>${avail}<em>人</em></b>
+     <div class="manpower-meter"><i style="width:${capacityNow?Math.round((freeSlotsNow/capacityNow)*100):0}%"></i></div>
+     <small>${freeSlotsNow}/${capacityNow} 人力槽可用 · ${usedNow} 槽已占用</small>
    </div>
  </div>
  <div class="stats secondary-stats">
    <div class="stat"><b>${fmt(S.cash)}</b><span>现金</span></div>
    <div class="stat"><b>${S.team.length}人</b><span>团队</span><small>${band}人档</small></div>
-   <div class="stat"><b>${freeSlotsNow}/${capacityNow}</b><span>可用人力</span><small>${usedNow}槽占用</small></div>
    <div class="stat" title="士气影响Pitch发挥、项目质量、续约和离职，但不会限制接单。"><b>${S.morale}</b><span>士气</span></div>
    <div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格 ×${projectPriceIndex().toFixed(2)}</small></div>
  </div>
