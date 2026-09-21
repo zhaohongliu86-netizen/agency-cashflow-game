@@ -11,7 +11,7 @@ const DIFF={
 
 const baseTeam=[
  ['老板','老板','创意',3.0,88],['策略A','策略','品牌',2.5,82],['客户A','阿康','客户',1.2,67],['客户B','阿康','客户',1.5,72],['客户总监','资深阿康','客户',3.0,84],['文案A','文案','创意',1.1,70],['文案总监','文案总监','创意',3.0,86],['美术A','美术','创意',1.2,73],['美术总监','美术总监','创意',3.0,87],['制片A','制片','制作',2.0,80]
-].map((x,i)=>({id:`p${i}`,name:x[0],role:x[1],spec:x[2],salary:x[3],skill:x[4],busy:0}));
+].map((x,i)=>({id:`p${i}`,name:x[0],role:x[1],spec:x[2],salary:x[3],skill:x[4],slots:[]}));
 
 const names=['新同事A','新同事B','新同事C','新同事D','新同事E','新同事F','新同事G','新同事H','新同事I','新同事J'];
 const roles=['阿康','文案','美术','策略','制片'];
@@ -24,8 +24,39 @@ function start(diff){
  S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
  allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render();
 }
-function allocateLegacy(){let n=5; for(const p of S.team){p.busy= n>0?24:0; if(n>0)n--;}}
-function available(){return S.team.filter(p=>p.busy<=0)}
+function capacity(p){
+ return (p.role==='老板'||p.role.includes('总监')||p.role.includes('资深')||p.skill>=84)?2:1;
+}
+function normalizePerson(p){
+ if(!Array.isArray(p.slots))p.slots=p.busy>0?[p.busy]:[];
+ delete p.busy;
+ return p;
+}
+function activeLoads(p){normalizePerson(p);return p.slots.filter(w=>w>0)}
+function freeSlots(p){return Math.max(0,capacity(p)-activeLoads(p).length)}
+function assignPerson(p,weeks){
+ normalizePerson(p);
+ if(freeSlots(p)<=0)return false;
+ p.slots.push(weeks);
+ return true;
+}
+function allocateLegacy(){
+ let n=5;
+ for(const p of S.team){
+   if(n<=0)break;
+   assignPerson(p,24);
+   n--;
+ }
+}
+function available(){return S.team.filter(p=>freeSlots(p)>0)}
+function totalFreeSlots(){return S.team.reduce((a,p)=>a+freeSlots(p),0)}
+function statusText(p){
+ const loads=activeLoads(p),cap=capacity(p);
+ if(!loads.length)return cap===2?'空闲 · 可双开':'空闲';
+ const longest=Math.max(...loads);
+ if(cap===2)return `${loads.length}/2 项目 · 最长${longest}周`;
+ return `忙 ${longest}周`;
+}
 function payroll(){return S.team.reduce((a,p)=>a+p.salary,0)}
 function unlockCap(){const n=S.team.length; return n>=40?5000:n>=30?1800:n>=20?800:480}
 function makeOpportunity(forced=''){
@@ -38,7 +69,13 @@ function makeOpportunity(forced=''){
  else value=pick([50,80,120,200,300,500,800,1200,1800,3000,5000]);
  value=Math.min(value,cap); value=Math.round(value*d.deal);
  const people=clamp(Math.ceil(Math.log2(Math.max(16,value/12))),2,12);
- const duration= type==='retainer'?pick([24,36,48]):pick([8,12,16,24]);
+ let duration;
+ if(type==='small') duration=pick([4,8,12]);
+ else if(type==='retainer') duration=pick([24,36,48,48]);
+ else if(value<100) duration=pick([8,12]);
+ else if(value<300) duration=pick([12,24,24]);
+ else if(value<800) duration=pick([24,36,36]);
+ else duration=pick([36,48,48]);
  const margin= type==='retainer'?pick([.22,.28,.33,.38]):type==='small'?pick([.45,.5,.55]):pick([.28,.34,.4,.46]);
  const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch','超级整合Pitch']};
  return {id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,freeAllowed:true,boost:false};
@@ -58,34 +95,64 @@ function requestProject(id){
  if(lack>0){showFreeChoice(o,lack);return}
  takeProject(id,false);
 }
+function createHireCandidate(){
+ const role=pick(roles);
+ const skill=Math.round(62+Math.random()*27);
+ const salary=+(0.9+(skill-60)*.055+(role==='策略'?0.4:0)).toFixed(1);
+ return {id:uid(),name:pick(names),role,spec:role==='文案'||role==='美术'?'创意':role==='阿康'?'客户':role,salary,skill,slots:[]};
+}
+function hireForProject(o,candidates){
+ const fee=candidates.reduce((a,p)=>a+p.salary,0);
+ const monthly=candidates.reduce((a,p)=>a+p.salary,0);
+ S.cash-=fee;S.yearSpend+=fee;
+ candidates.forEach(p=>S.team.push(p));
+ log(`为 ${o.name} 加急招了 ${candidates.length} 人，招聘费 ${fmt(fee)}；每月固定工资增加 ${fmt(monthly)}。`,'muted');
+ render();
+ takeProject(o.id,false);
+}
 function showFreeChoice(o,freeCount){
  const old=document.getElementById('freeModal'); if(old)old.remove();
- const cost=freeCostFor(o,freeCount);
+ const freeCost=freeCostFor(o,freeCount);
  const share=freeCount/o.people;
+ const candidates=Array.from({length:freeCount},()=>createHireCandidate());
+ const hireFee=candidates.reduce((a,p)=>a+p.salary,0);
+ const newPayroll=candidates.reduce((a,p)=>a+p.salary,0);
  const host=document.createElement('div');host.className='overlay';host.id='freeModal';
- let risk;
+ let freeRisk;
  if(o.type==='pitch'){
-   risk=share>.5
+   freeRisk=share>.5
      ? `Free 占到 ${Math.round(share*100)}%，超过一半：Pitch 胜率会下降约 8 个百分点，执行质量也更难控。`
-     : `Free 不超过项目人力的一半：不会直接降低 Pitch 胜率，但执行质量会有轻微风险。`;
+     : `Free 不超过项目人力的一半：不会直接降低 Pitch 胜率，但执行质量仍有轻微风险。`;
  }else{
-   risk=share>.5
-     ? `Free 占到 ${Math.round(share*100)}%，项目可以直接接，但外部团队过半，执行质量和声望风险会明显增加。`
-     : `项目可以直接接。Free 不超过一半，主要代价是额外成本和轻微的执行质量风险。`;
+   freeRisk=share>.5
+     ? `Free 占到 ${Math.round(share*100)}%，项目能接，但外部团队过半，执行质量与声望风险更高。`
+     : `Free 不超过一半，主要代价是项目成本和轻微执行质量风险。`;
  }
- host.innerHTML=`<div class="modal">
-   <div class="big">人不够。要用 Free 吗？</div>
-   <p><b>${o.name}</b> 需要 ${o.people} 人，现在内部只有 ${available().length} 人可用，还差 <b>${freeCount} 人</b>。</p>
-   <p>预计 Free 成本：<b>${fmt(cost)}</b></p>
-   <p class="bad">${risk}</p>
-   <div class="row">
-     <button class="btn secondary" id="cancelFree">先不接</button>
-     <button class="btn" id="confirmFree">用 ${freeCount} 个 Free ${o.type==='pitch'?'去比稿':'接下来'}</button>
+ host.innerHTML=`<div class="modal staffing-modal">
+   <div class="big">人手不够，怎么补？</div>
+   <p><b>${o.name}</b> 需要 ${o.people} 人，现在只有 ${available().length} 名可承担新项目的人，还差 <b>${freeCount} 人</b>。</p>
+   <div class="staffing-options">
+     <div class="staffing-option">
+       <h3>招正式员工</h3>
+       <p>加急招 ${freeCount} 人，本季度内到岗。</p>
+       <p><b>招聘费约 ${fmt(hireFee)}</b><br>以后每月固定工资 +${fmt(newPayroll)}</p>
+       <p class="muted">${o.type==='pitch'?'即使 Pitch 输了，人也已经招进来了。':'长期成本更高，但不会吃 Free 的质量惩罚。'}</p>
+       <button class="btn" id="confirmHire">招 ${freeCount} 人再${o.type==='pitch'?'去比稿':'接下来'}</button>
+     </div>
+     <div class="staffing-option">
+       <h3>用 Free</h3>
+       <p>不扩正式编制，只覆盖这一个项目。</p>
+       <p><b>预计 Free 成本 ${fmt(freeCost)}</b></p>
+       <p class="bad">${freeRisk}</p>
+       <button class="btn secondary" id="confirmFree">用 ${freeCount} 个 Free ${o.type==='pitch'?'去比稿':'接下来'}</button>
+     </div>
    </div>
+   <button class="btn secondary staffing-cancel" id="cancelFree">先不接</button>
  </div>`;
  document.body.appendChild(host);
  host.querySelector('#cancelFree').onclick=()=>host.remove();
  host.querySelector('#confirmFree').onclick=()=>{host.remove();takeProject(o.id,true)};
+ host.querySelector('#confirmHire').onclick=()=>{host.remove();hireForProject(o,candidates)};
 }
 function takeProject(id,useFree=false){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
@@ -106,7 +173,7 @@ function takeProject(id,useFree=false){
 
  // 年框和散活是直接接单，不参与 Pitch 随机开奖。
  if(o.type!=='pitch'){
-   selected.forEach(p=>p.busy=Math.max(p.busy,o.duration));
+   selected.forEach(p=>assignPerson(p,o.duration));
    const quality=clamp(teamScore+Math.random()*12-4-freeQualityPenalty,42,98);
    S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false});
    S.reputation=clamp(S.reputation+(quality>84?2:quality<60?-2:0),0,100);
@@ -127,7 +194,7 @@ function takeProject(id,useFree=false){
  const won=Math.random()*100<pWin;
  if(won){
    S.wins++;S.winStreak++;S.lossStreak=0;
-   selected.forEach(p=>p.busy=Math.max(p.busy,o.duration));
+   selected.forEach(p=>assignPerson(p,o.duration));
    const quality=clamp(teamScore+Math.random()*14-5+(o.boost?4:0)-freeQualityPenalty,42,98);
    S.active.push({id:uid(),name:o.name,type:o.type,value:o.value,margin:o.margin,weeks:o.duration,left:o.duration,people:o.people,quality,legacy:false});
    S.reputation=clamp(S.reputation+(quality>82?3:quality<62?-2:1),0,100);
@@ -195,7 +262,10 @@ function progressQuarter(){
  }
  const salary=payroll()*3; const office=Math.max(4,S.team.length*.45)*3;
  S.cash += margin - salary - office; S.revenue+=gross; S.profit += margin - salary - office; S.taxable += Math.max(0,margin - salary - office); S.yearSpend+=salary+office;
- S.team.forEach(p=>p.busy=Math.max(0,p.busy-12));
+ S.team.forEach(p=>{
+   normalizePerson(p);
+   p.slots=p.slots.map(w=>Math.max(0,w-12)).filter(w=>w>0);
+ });
  const done=S.active.filter(p=>p.left<=0); done.forEach(p=>{if(p.quality>84)S.reputation=clamp(S.reputation+2,0,100);}); S.active=S.active.filter(p=>p.left>0);
  for(const h of S.pendingHires){S.team.push(h.person);log(`${h.person.name} 到岗。招聘费已经在上季度付过。`,'good')} S.pendingHires=[];
  log(`Q${S.quarter} 结算：确认毛利 ${fmt(margin)}，工资+办公 ${fmt(salary+office)}。`,margin-salary-office>=0?'good':'bad');
@@ -212,7 +282,7 @@ function closeYear(bonus,party){
  S.year++;S.quarter=1;S.week+=12;genOpp();render();
 }
 function hire(){
- const role=pick(roles),skill=Math.round(62+Math.random()*27),salary=+(0.9+(skill-60)*.055+(role==='策略'?0.4:0)).toFixed(1),person={id:uid(),name:pick(names),role,spec:role==='文案'||role==='美术'?'创意':role==='阿康'?'客户':role,salary,skill,busy:0};
+ const person=createHireCandidate(),role=person.role,salary=person.salary;
  const fee=salary*.5;S.cash-=fee;S.pendingHires.push({person});log(`签下 ${person.name}（${role}），月薪 ${fmt(salary)}。招聘费 ${fmt(fee)}，下季度到岗。`,'muted');render();
 }
 function bankrupt(){S.ended=true;showEnding(true)}
@@ -237,10 +307,18 @@ function showEnding(bankrupt){
 }
 function render(){
  const app=document.getElementById('app');if(!S){app.innerHTML=startHTML();return}
- const avail=available().length;app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · 144周都在后台跑，你只做12次大决定</p></div><div class="row"><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div>
- <div class="stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${fmt(S.profit)}</b><span>累计利润</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat"><b>${avail}</b><span>可用人手</span></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
+ const avail=available().length;app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · 144周都在后台跑，你只做12次大决定</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
+ <div class="stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${fmt(S.profit)}</b><span>累计利润</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat"><b>${avail}</b><span>可接新项目的人</span></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
  <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2><div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div style="margin-top:14px" class="row"><button class="btn" onclick="progressQuarter()">推进一季度 →</button><span class="muted">季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</span></div>
- <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${fmt(p.salary)}</td><td><span class="pill">${p.busy>0?`忙 ${p.busy}周`:'空闲'}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
+ <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
+}
+function durationLabel(weeks){
+ if(weeks>=48)return '1年';
+ if(weeks>=36)return '9个月';
+ if(weeks>=24)return '2个季度';
+ if(weeks>=12)return '1个季度';
+ if(weeks>=8)return '2个月';
+ return '1个月';
 }
 function cardHTML(o){
  const lack=Math.max(0,o.people-available().length);
@@ -249,8 +327,8 @@ function cardHTML(o){
  const secondLine=isPitch
    ? `基础赢率约 ${35+DIFF[S.diff].baseWin}%${staffingNote}`
    : `无需比稿 · 直接接单${staffingNote}`;
- return `<div class="card"><span class="tag">${o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${o.people}人 · ${o.duration}周<br>${secondLine}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加人力成本 +5~12%'}</button>`:''}</div></div>`
+ return `<div class="card"><span class="tag">${o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${o.people}人 · ${durationLabel(o.duration)}（${o.duration}周）<br>${secondLine}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="requestProject('${o.id}')">${isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')">${o.boost?'取消加码':'加人力成本 +5~12%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
-function startHTML(){return `<div class="start"><div class="startbox"><h1>广告公司模拟器</h1><p>你有三年。客户不保证续约，Pitch不保证赢，员工不保证不跑。唯一保证的是工资每年涨10%。</p><div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">一局约 5–8 分钟。目标不是找到最优解，而是看看你会把公司经营成什么东西。</p></div></div>`}
+function startHTML(){return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>你有三年。客户不保证续约，Pitch不保证赢，员工不保证不跑。唯一保证的是工资每年涨10%。</p><div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">一局约 5–8 分钟。目标不是找到最优解，而是看看你会把公司经营成什么东西。</p></div></div>`}
 render();
