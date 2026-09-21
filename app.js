@@ -873,10 +873,14 @@ function commitHire(person,host=null){
 function hire(){
  const old=document.getElementById('hireModal');if(old)old.remove();
  const candidates=roles.map(role=>createHireCandidate(role));
+ const market=reputationEffects();
+ const talentCopy=market.talentSkill===0
+   ? '人才市场正常'
+   : `声望带来的招聘条件：候选能力 ${market.talentSkill>0?'+':''}${market.talentSkill} · 薪资市场 ×${market.talentPay.toFixed(2)}`;
  const host=document.createElement('div');host.className='overlay';host.id='hireModal';
  host.innerHTML=`<div class="modal hire-modal">
    <div class="big">这次想补哪种能力？</div>
-   <p class="muted">招聘不再只是“多一个人”。不同岗位会改变四维能力；小团队扩张时，普通新人也可能暂时稀释原来的能力密度。</p>
+   <p class="muted">行业声望 ${S.reputation} · ${talentCopy}。不同岗位会改变四维能力；小团队扩张时，普通新人也可能暂时稀释原来的能力密度。</p>
    <div class="hire-candidates">
      ${candidates.map((p,i)=>`<div class="hire-card">
        <div class="hire-role">${p.role}</div>
@@ -1824,7 +1828,7 @@ function render(){
      <span>行业声望</span>
      <b>${S.reputation}<em>分</em></b>
      <small>${reputationLabel()} · ${reputationImpactText()}</small>
-     <div class="reputation-source">声望只在作品交付后结算：大项目 × 高质量涨得最快</div>
+     <div class="reputation-source">声望在交付后结算：项目声誉值 × 最终质量</div>
    </div>
  </div>
  <div class="capability-strip">
