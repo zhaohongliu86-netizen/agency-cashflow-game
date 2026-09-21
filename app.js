@@ -685,11 +685,48 @@ function requestProject(id){
  if(lack>0){showStaffingChoice(o,lack);return}
  takeProject(id,false);
 }
-function createHireCandidate(){
- const role=pick(roles);
- const skill=Math.round(62+Math.random()*27);
- const salary=+((0.9+(skill-60)*.055+(role==='策略'?0.4:0))*salaryMarketIndex()).toFixed(1);
- return {id:uid(),name:pick(names),role,spec:role==='文案'||role==='美术'?'创意':role==='阿康'?'客户':role,salary,skill,slots:[],tenure:0};
+function createHireCandidate(requestedRole=''){
+ const role=requestedRole||pick(roles);
+ const skill=Math.round(64+Math.random()*25);
+ const salary=salaryFor(role,skill);
+ return {id:uid(),name:pick(names),role:roleTitle(role,skill),spec:roleSpec(role),salary,skill,slots:[],tenure:0};
+}
+function candidateImpactHTML(person){
+ const delta=capabilityDelta(person);
+ const gains=Object.entries(delta).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+ if(!gains.length)return '<span>组织更完整，但四维暂时无明显上升</span>';
+ return gains.slice(0,2).map(([k,v])=>`<span>${CAPABILITY_META[k].label} <b>+${v}</b></span>`).join('');
+}
+function commitHire(person,host=null){
+ const before=S.team.length,fee=person.salary*.5;
+ S.cash-=fee;S.profit-=fee;S.yearSpend+=fee;
+ S.pendingHires.push({person});
+ log(`签下 ${person.name}（${person.role}），月薪 ${fmt(person.salary)}。招聘费 ${fmt(fee)}，${isAnnualMode()?'明年':'下季度'}到岗。`,'good');
+ if(host)host.remove();
+ render();saveGame(false);showHireIncentive(1);
+ if(businessScaleBand(before+S.pendingHires.length)>businessScaleBand(before))log('这次扩编会把公司推入更高业务规模档。','muted');
+}
+function hire(){
+ const old=document.getElementById('hireModal');if(old)old.remove();
+ const candidates=roles.map(role=>createHireCandidate(role));
+ const host=document.createElement('div');host.className='overlay';host.id='hireModal';
+ host.innerHTML=`<div class="modal hire-modal">
+   <div class="big">这次想补哪种能力？</div>
+   <p class="muted">招聘不再只是“多一个人”。不同岗位会改变公司的策略力、创意力、服务力与资源执行力。</p>
+   <div class="hire-candidates">
+     ${candidates.map((p,i)=>`<div class="hire-card">
+       <div class="hire-role">${p.role}</div>
+       <div class="hire-skill">能力 ${p.skill}</div>
+       <div class="hire-pay">月薪 ${fmt(p.salary)} · 招聘费 ${fmt(p.salary*.5)}</div>
+       <div class="hire-impact">${candidateImpactHTML(p)}</div>
+       <button class="btn" data-hire-index="${i}">招进来</button>
+     </div>`).join('')}
+   </div>
+   <button class="btn secondary" id="cancelHire">再看看</button>
+ </div>`;
+ document.body.appendChild(host);
+ host.querySelector('#cancelHire').onclick=()=>host.remove();
+ host.querySelectorAll('[data-hire-index]').forEach(btn=>btn.onclick=()=>commitHire(candidates[+btn.dataset.hireIndex],host));
 }
 function hireForProject(o,candidates){
  const before=S.team.length;
@@ -707,7 +744,7 @@ function showStaffingChoice(o,freeCount){
  const isPitch=o.type==='pitch';
  const freeCost=isPitch?pitchFreeCostFor(o,freeCount):executionFreeCostFor(o,freeCount);
  const share=freeCount/o.people;
- const candidates=Array.from({length:freeCount},()=>createHireCandidate());
+ const candidates=projectHireRoles(o,freeCount).map(role=>createHireCandidate(role));
  const hireFee=candidates.reduce((a,p)=>a+p.salary,0);
  const newPayroll=candidates.reduce((a,p)=>a+p.salary,0);
  const host=document.createElement('div');host.className='overlay';host.id='freeModal';
@@ -772,7 +809,7 @@ function finalizePitchExecution(o,selected,freeCount,mode,teamScore){
  let qualityPenalty=0;
 
  if(mode==='convert'){
-   const converts=Array.from({length:freeCount},()=>createHireCandidate());
+   const converts=projectHireRoles(o,freeCount).map(role=>createHireCandidate(role));
    const monthly=converts.reduce((a,p)=>a+p.salary,0);
    const conversionFee=+(monthly*.5).toFixed(1);
    S.cash-=conversionFee;S.yearSpend+=conversionFee;S.profit-=conversionFee;
@@ -800,7 +837,7 @@ function finalizePitchExecution(o,selected,freeCount,mode,teamScore){
 }
 function showPostPitchExecutionChoice(o,selected,freeCount,teamScore){
  const host=document.createElement('div');host.className='overlay';host.id='executionStaffingModal';
- const converts=Array.from({length:freeCount},()=>createHireCandidate());
+ const converts=projectHireRoles(o,freeCount).map(role=>createHireCandidate(role));
  const monthly=converts.reduce((a,p)=>a+p.salary,0);
  const conversionFee=+(monthly*.5).toFixed(1);
  const executionFreeCost=executionFreeCostFor(o,freeCount);
@@ -1524,16 +1561,7 @@ function showHireIncentive(signedCount=1){
  setTimeout(()=>host.classList.add('result-leave'),2200);
  setTimeout(()=>host.remove(),2700);
 }
-function hire(){
- const person=createHireCandidate(),role=person.role,salary=person.salary;
- const fee=salary*.5;
- S.cash-=fee;S.profit-=fee;S.yearSpend+=fee;
- S.pendingHires.push({person});
- log(`签下 ${person.name}（${role}），月薪 ${fmt(salary)}。招聘费 ${fmt(fee)}，下季度到岗。公司每多 5 个正式员工，之后新刷的业务案值整体上一个档位。`,'good');
- render();
- saveGame(false);
- showHireIncentive(1);
-}
+
 const PROFIT_BUCKETS=[-1000,-500,-300,-200,-100,-50,0,50,100,200,300,500,800,1200,1800,2500,3500,5000,7500,10000,Infinity];
 const LEADERBOARD_NS='agency-cashflow-game-hongliu-v1';
 
