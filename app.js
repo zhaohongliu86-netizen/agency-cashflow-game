@@ -363,7 +363,7 @@ function takeProject(id,useFree=false){
  S.opp=S.opp.filter(x=>x.id!==id);
  render();
 
- showProjectResult({
+ showPitchSuspense(o,()=>showProjectResult({
    won,type:o.type,name:o.name,value:o.value,
    cost:Math.max(0,netPitchCost),grossCost:grossPitchCost,pitchFee,pWin,
    afterClose:()=>{
@@ -371,8 +371,43 @@ function takeProject(id,useFree=false){
      if(freeCount>0&&useFree)showPostPitchExecutionChoice(o,selected,freeCount,teamScore);
      else finalizePitchExecution(o,selected,0,'internal',teamScore);
    }
- });
+ }));
 }
+function showPitchSuspense(o,onDone){
+ const existing=document.getElementById('pitchSuspenseModal'); if(existing)existing.remove();
+ const common=[
+   '客户反馈中…','激烈比稿中…','客户内部讨论中…','老板正在看第三版…',
+   '策略被追问中…','创意总监正在硬撑…','采购还没说话…','客户突然拉了个大群…',
+   '方案正在被转发给大老板…','客户说再内部对一下…','最后一页又被翻回去了…',
+   '有人开始问预算了…','会议室里还没有结论…','客户在比较两家方案…',
+   '大老板刚刚进会议室…','提案群突然安静了…','客户说：我们先内部讨论一下…',
+   '方案已经讲完，空气还没恢复流动…'
+ ];
+ const byEra={
+   '2006':['客户把方案打印出来了…','老板还在翻那本厚厚的提案…','电话那头说晚点给消息…'],
+   '2016':['客户微信群正在刷屏…','采购在确认比稿费…','客户说这个方向挺有意思…'],
+   '2026':['客户问：AI还能不能再出一版…','群里正在@更多人…','客户说先别急着定…']
+ };
+ const pool=[...common,...(byEra[S.diff]||[])];
+ const first=pick(pool);
+ let second=pick(pool.filter(x=>x!==first));
+ const total=o.value>=1000?2500:o.value>=500?2200:o.value>=200?1900:1600;
+ const switchAt=Math.round(total*.48);
+ const host=document.createElement('div');
+ host.className='overlay pitch-suspense-overlay';
+ host.id='pitchSuspenseModal';
+ host.innerHTML=`<div class="pitch-suspense-card">
+   <div class="pitch-suspense-kicker">PITCHING</div>
+   <div class="pitch-suspense-project">${o.name}</div>
+   <div class="pitch-suspense-copy" id="pitchSuspenseCopy">${first}</div>
+   <div class="pitch-suspense-dots"><i></i><i></i><i></i></div>
+ </div>`;
+ document.body.appendChild(host);
+ const copy=host.querySelector('#pitchSuspenseCopy');
+ setTimeout(()=>{copy.classList.add('copy-swap');setTimeout(()=>{copy.textContent=second;copy.classList.remove('copy-swap')},150)},switchAt);
+ setTimeout(()=>{host.remove();onDone()},total);
+}
+
 function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0,afterClose=null}){
  const old=document.getElementById('pitchResultModal'); if(old)old.remove();
 
