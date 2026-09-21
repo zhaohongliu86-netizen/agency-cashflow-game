@@ -203,6 +203,8 @@ function normalizeLoadedGame(data){
    ? loaded.yearStartProfit
    : (Number(loaded.profit)||0)-(Number(loaded.taxable)||0);
  loaded.team=(loaded.team||[]).map(p=>normalizePerson(p));
+ loaded.opp=(loaded.opp||[]).map(o=>ensureProjectNeeds(o));
+ loaded.pendingRenewals=(loaded.pendingRenewals||[]).map(o=>ensureProjectNeeds(o));
  loaded.year=clamp(Number(loaded.year)||1,1,MAX_YEARS);
  loaded.quarter=clamp(Number(loaded.quarter)||1,1,4);
  loaded.ended=false;
@@ -517,6 +519,54 @@ function scheduleGossipRotation(){
  },gossipReadTime(current));
 }
 
+function needProfileFor(type,name=''){
+ if(name.includes('品牌焕新')||name.includes('品牌顾问'))return ['strategy','creative'];
+ if(name.includes('新品'))return ['creative','strategy'];
+ if(name.includes('超级')||name.includes('大型')||name.includes('整合'))return ['execution','service'];
+ if(name.includes('年度战役')||name.includes('核心战役'))return ['creative','service'];
+ if(name.includes('社媒')||name.includes('内容'))return ['service','creative'];
+ if(type==='retainer')return ['service','strategy'];
+ if(type==='small')return ['creative','execution'];
+ return ['creative','strategy'];
+}
+function ensureProjectNeeds(o){
+ if(!o)return o;
+ if(!o.needPrimary||!o.needSecondary){
+   const [primary,secondary]=needProfileFor(o.type,o.name||'');
+   o.needPrimary=primary;o.needSecondary=secondary;
+ }
+ return o;
+}
+function projectMatch(o){
+ ensureProjectNeeds(o);
+ const caps=companyCapabilities();
+ const primary=caps[o.needPrimary]||60,secondary=caps[o.needSecondary]||60;
+ const score=Math.round(primary*.65+secondary*.35);
+ const bonus=clamp(Math.round((score-72)*.8),-16,16);
+ const label=score>=84?'非常适合':score>=76?'比较适合':score>=67?'一般匹配':'不太擅长';
+ return {score,bonus,label,primary,secondary,caps};
+}
+function projectNeedLabel(o){
+ ensureProjectNeeds(o);
+ return `${CAPABILITY_META[o.needPrimary].label} + ${CAPABILITY_META[o.needSecondary].label}`;
+}
+function rolesForCapability(key){
+ if(key==='strategy')return ['策略'];
+ if(key==='creative')return ['文案','美术'];
+ if(key==='service')return ['阿康'];
+ return ['制片'];
+}
+function projectHireRoles(o,count){
+ ensureProjectNeeds(o);
+ const primary=rolesForCapability(o.needPrimary),secondary=rolesForCapability(o.needSecondary);
+ const result=[];
+ for(let i=0;i<count;i++){
+   const pool=i%2===0?primary:secondary;
+   result.push(pool[i%pool.length]);
+ }
+ return result;
+}
+
 function requiredPeople(type,value,duration){
  const real=realProjectValue(value);
  if(type==='small'){
@@ -534,11 +584,16 @@ function requiredPeople(type,value,duration){
 }
 
 function makeOpportunity(forced=''){
- const d=DIFF[S.diff], cap=unlockCap(), econ=economyPhase();
+ const d=gameRules(), cap=unlockCap(), econ=economyPhase();
  const r=Math.random();
  let type=forced;
  if(!type){
-   const [smallCut,retainerCut]=econ.mix;
+   let [smallCut,retainerCut]=econ.mix;
+   if(S.scale){
+     const shift=startScale().mixShift||[0,0];
+     smallCut=clamp(smallCut+shift[0],.06,.60);
+     retainerCut=clamp(retainerCut+shift[1],smallCut+.04,.82);
+   }
    type=r<smallCut?'small':r<retainerCut?'retainer':'pitch';
  }
  const scaleStep=businessScaleStep();
@@ -561,10 +616,11 @@ function makeOpportunity(forced=''){
  else duration=pick([36,48,48]);
  people=requiredPeople(type,value,duration);
  const margin= type==='retainer'?pick([.22,.28,.33,.38]):type==='small'?pick([.45,.5,.55]):pick([.28,.34,.4,.46]);
- const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch','超级整合Pitch']};
+ const namesBy={small:['临时物料包','社媒快单','老板朋友的急活','产品内容小单'],retainer:['半年年框','年度社媒年框','品牌年度顾问','内容长期服务'],pitch:realValue>=1000?['大型整合Pitch','年度核心战役Pitch','超级整合Pitch','品牌焕新Pitch']:['新品上市Pitch','整合传播Pitch','品牌焕新Pitch','年度战役Pitch']};
  const pitchWeeks=type==='pitch'?pick([2,2,2,3]):0;
- const pitchFee=(type==='pitch'&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0;
- return {id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,boost:false};
+ const pitchFee=(type==='pitch'&&!S.scale&&S.diff==='2016')?+(pick([2,3,4,5])*projectPriceIndex()).toFixed(1):0;
+ const opportunity={id:uid(),name:pick(namesBy[type]),type,value,people,duration,margin,pitchWeeks,pitchFee,freeAllowed:true,boost:false};
+ return ensureProjectNeeds(opportunity);
 }
 function renewalChance(morale){
  let base=morale<75?0:morale<85?.25:morale<95?.45:.65;
@@ -598,12 +654,13 @@ function maybeCreateRenewal(p){
    renewal:true,
    previousMargin:p.margin
  };
+ ensureProjectNeeds(renewal);
  S.pendingRenewals.push(renewal);
  log(`${baseName} 想续约。团队士气 ${S.morale}，客户愿意继续谈，但毛利从 ${Math.round((p.margin||0)*100)}% 压到 ${Math.round(margin*100)}%。`,'good');
 }
 function genOpp(){
  const econ=economyPhase();
- const n=Math.max(2,DIFF[S.diff].opp + econ.opp + (S.reputation>=70?1:0));
+ const n=Math.max(2,gameRules().opp + econ.opp + (S.reputation>=70?1:0));
  S.opp=[];
  for(let i=0;i<n;i++)S.opp.push(makeOpportunity());
  if(S.pendingRenewals&&S.pendingRenewals.length){
