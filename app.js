@@ -19,7 +19,7 @@ const roles=['阿康','文案','美术','策略','制片'];
 let S=null;
 function start(diff){
  const d=DIFF[diff];
- S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0};
+ S={diff,year:1,quarter:1,week:1,cash:d.startCash,profit:0,revenue:0,taxable:0,reputation:50,morale:60,team:structuredClone(baseTeam),opp:[],active:[],log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0};
  S.active.push({id:uid(),name:'老客户A · 日常品牌服务',type:'retainer',value:72,margin:.42,weeks:24,left:24,people:3,quality:70,legacy:true});
  S.active.push({id:uid(),name:'老客户B · 社媒与内容',type:'retainer',value:48,margin:.38,weeks:24,left:24,people:2,quality:66,legacy:true});
  allocateLegacy(); genOpp(); log('公司开门。先别谈理想，先活下来。',''); render();
@@ -100,6 +100,71 @@ function showManpowerDelta(before,after,reason=''){
  setTimeout(()=>host.classList.add('result-leave'),1800);
  setTimeout(()=>host.remove(),2300);
 }
+const GOSSIP_COMMON=[
+ 'A社创意总监跳去D公司，据说带走了半个组。',
+ 'B广告的创意和阿康在客户楼下吵起来，十分钟后一起回去改稿。',
+ 'C公司内部在传一段桃色八卦。没人承认，但所有人都知道。',
+ 'D公司某客户被曝暗示要回扣，内部两天后悄悄换了接口人。',
+ 'E广告今年到现在一个奖都没拿，老板说：奖不重要。',
+ 'F社刚赢下大Pitch，第二天客户就说预算先砍30%。',
+ 'G公司新来的ECD第一周把三条在做的片子全部推翻。',
+ 'H广告有人连夜辞职，第二天又以Free身份回来了。',
+ 'A公司某总监据说同时在谈三家，HR群里已经互相通气。',
+ 'B社老板在全员会上说今年不裁员，大家默默看了一眼财务。',
+ 'C创意刚拿了一个奖，客户问：能不能把获奖版改得再卖货一点。',
+ 'D广告某阿康连续三晚住公司，第四天客户说项目延期。',
+ 'E公司新业务负责人来了两个月，LinkedIn已经开始更新。',
+ 'F社有个项目改了27轮，最后客户选回了第一版。',
+ 'G广告有人把内部吐槽错发进客户群，撤回速度创下公司纪录。',
+ 'H公司老板说要做精品小公司，第二周开始疯狂招人。',
+ 'A社某组连续赢了三个Pitch，隔壁组开始研究他们到底用了什么模板。',
+ 'B广告今年营收涨了，利润没涨，老板讲话明显短了。',
+ 'C公司刚搬进新办公室，传闻房租比一个年框还贵。',
+ 'D社某创意拿着竞品奖杯照片开会，说大家先别聊洞察了。',
+ 'E广告的策略总监突然离职，所有项目一夜之间都变成“先凭感觉来”。',
+ 'F公司某客户总监据说谈回了一个大单，条件是全员周末待命。',
+ 'G社有个Free连续干了半年，大家已经忘了他不是正式员工。',
+ 'H广告某老板在朋友圈发“做难而正确的事”，公司群里没人点赞。'
+];
+
+const GOSSIP_BY_ERA={
+ '2006':[
+   'A公司传出创意总监被外资4A挖走，薪水据说直接翻倍。',
+   'B广告为了一个电视广告Pitch，整整打印了六本厚提案。',
+   'C社老板说互联网广告还早，先把电视TVC做好。',
+   'D公司某客户坚持传真改稿，创意部第一次集体沉默。',
+   'E广告刚买了一整面奖杯柜，今年还空着一半。'
+ ],
+ '2016':[
+   'A社开始高薪抢Social人才，传统创意组突然有点坐不住了。',
+   'B公司拿下互联网大客户，全员朋友圈统一发“新伙伴”。',
+   'C广告有人说短视频会改变行业，会议室里一半人不信。',
+   'D社某项目一晚上出了80张社交海报，第二天只发了3张。',
+   'E公司在讨论要不要成立内容实验室，名字已经想了六版。'
+ ],
+ '2026':[
+   'A公司宣布全面AI化，第一件事是开了三场会讨论怎么AI化。',
+   'B广告客户要求先用AI出50版，再从里面“找感觉”。',
+   'C社某创意总监因为一句“这AI也能做”当场沉默了七秒。',
+   'D公司刚裁完一轮，又开始招“懂AI的新型创意”。',
+   'E广告今年没报几个奖，老板说先把现金流做好。'
+ ]
+};
+
+function refreshGossip(){
+ const pool=[...GOSSIP_COMMON,...(GOSSIP_BY_ERA[S.diff]||[])];
+ const shuffled=[...pool].sort(()=>Math.random()-.5);
+ S.gossip=shuffled.slice(0,8);
+}
+function gossipHTML(){
+ if(!S.gossip||!S.gossip.length)refreshGossip();
+ const items=S.gossip.map(x=>`<span class="gossip-item">${x}</span>`).join('');
+ return `<div class="gossip-strip">
+   <div class="gossip-label">圈内小报</div>
+   <div class="gossip-window"><div class="gossip-track">${items}${items}</div></div>
+ </div>`;
+}
+
 function makeOpportunity(forced=''){
  const d=DIFF[S.diff], cap=unlockCap();
  const r=Math.random();
@@ -129,6 +194,7 @@ function genOpp(){
  const n=DIFF[S.diff].opp + (S.reputation>=70?1:0);
  S.opp=[];
  for(let i=0;i<n;i++)S.opp.push(makeOpportunity());
+ refreshGossip();
 }
 function log(msg,cls=''){S.log.unshift({msg,cls}); S.log=S.log.slice(0,60)}
 function executionFreeCostFor(o,freeCount){
@@ -749,7 +815,7 @@ function render(){
    </div>
  </div>
  <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div></div>
- <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2><div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div style="margin-top:14px" class="row"><button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button><span class="muted">季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</span></div>
+ <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div style="margin-top:14px" class="row"><button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button><span class="muted">季度工资约 ${fmt(payroll()*3)} · 大单解锁上限 ${fmt(unlockCap())}</span></div>
  <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>工龄</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${Number.isFinite(p.tenure)?p.tenure:2}年</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
 }
 function durationLabel(weeks){
