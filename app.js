@@ -150,43 +150,37 @@ function capacity(p){
 }
 function seniorCount(){return S.team.filter(isSenior).length}
 function seniorRatio(){return S.team.length?seniorCount()/S.team.length:0}
-function requiredSeniorRatio(value){
+function requiredMorale(value){
  const real=realProjectValue(value);
- if(real>=3000)return .35;
- if(real>=1000)return .30;
- if(real>=500)return .25;
+ if(real>=3000)return 80;
+ if(real>=1000)return 70;
+ if(real>=500)return 60;
  return 0;
 }
-function seniorGateInfo(value){
- const required=requiredSeniorRatio(value);
- const current=seniorRatio();
- const needed=Math.ceil(S.team.length*required);
- return {required,current,needed,have:seniorCount(),ok:required===0||current+1e-9>=required};
+function moraleGateInfo(value){
+ const required=requiredMorale(value);
+ return {required,current:S.morale,ok:required===0||S.morale>=required};
 }
-function showSeniorGate(o){
- const info=seniorGateInfo(o.value);
- const old=document.getElementById('seniorGateModal');if(old)old.remove();
+function showMoraleGate(o){
+ const info=moraleGateInfo(o.value);
+ const old=document.getElementById('moraleGateModal');if(old)old.remove();
  const host=document.createElement('div');
  host.className='overlay senior-gate-overlay';
- host.id='seniorGateModal';
- const missing=Math.max(0,info.needed-info.have);
- const explain=missing
-   ? '还差约 '+missing+' 名资深人员。老板、总监、资深职位，或能力值达到 84 的正式员工，都计入资深。'
-   : '当前比例刚好够，但团队变化后仍会再次检查。';
+ host.id='moraleGateModal';
  host.innerHTML=`<div class="modal senior-gate-modal">
-   <div class="senior-gate-kicker">ORGANIZATION CHECK</div>
-   <div class="big">这单，公司还接不住。</div>
-   <p><b>${o.name}</b> 案值 ${fmt(o.value)}，要求正式团队中至少 <b>${Math.round(info.required*100)}%</b> 是资深人员。</p>
+   <div class="senior-gate-kicker">TEAM CHECK</div>
+   <div class="big">这单很大，但团队现在扛不住。</div>
+   <p><b>${o.name}</b> 案值 ${fmt(o.value)}，需要团队士气至少 <b>${info.required}</b>。</p>
    <div class="senior-gate-numbers">
-     <div><span>当前资深</span><b>${info.have} / ${S.team.length}</b><small>${Math.round(info.current*100)}%</small></div>
+     <div><span>当前士气</span><b>${info.current}</b><small>团队状态</small></div>
      <strong>→</strong>
-     <div><span>最低要求</span><b>${info.needed} 人</b><small>${Math.round(info.required*100)}%</small></div>
+     <div><span>最低要求</span><b>${info.required}</b><small>大项目门槛</small></div>
    </div>
-   <p class="muted">${explain}</p>
-   <button class="btn" id="closeSeniorGate">先把班底补起来</button>
+   <p class="muted">奖金、年会和稳定经营能把士气带回来；裁员和长期亏待团队会让大项目更难接。裁掉初级员工不会再提高接单资格。</p>
+   <button class="btn" id="closeMoraleGate">先把团队状态拉回来</button>
  </div>`;
  document.body.appendChild(host);
- host.querySelector('#closeSeniorGate').onclick=()=>host.remove();
+ host.querySelector('#closeMoraleGate').onclick=()=>host.remove();
 }
 function normalizePerson(p){
  if(!Array.isArray(p.slots))p.slots=p.busy>0?[p.busy]:[];
@@ -516,7 +510,7 @@ function pitchFreeCostFor(o,freeCount){
 }
 function requestProject(id){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
- if(!seniorGateInfo(o.value).ok){showSeniorGate(o);return}
+ if(!moraleGateInfo(o.value).ok){showMoraleGate(o);return}
  const lack=Math.max(0,o.people-available().length);
  if(lack>0){showStaffingChoice(o,lack);return}
  takeProject(id,false);
@@ -739,7 +733,7 @@ function maybeShowBudgetShrink(o,onContinue){
 
 function takeProject(id,useFree=false){
  const o=S.opp.find(x=>x.id===id); if(!o)return;
- if(!seniorGateInfo(o.value).ok){showSeniorGate(o);return}
+ if(!moraleGateInfo(o.value).ok){showMoraleGate(o);return}
  const avail=available();
  const internal=Math.min(avail.length,o.people);
  const freeCount=Math.max(0,o.people-internal);
@@ -946,8 +940,10 @@ function quarterStatusCopy(){
  if(S.cash>0)return `已经累计亏损 ${fmt(S.profit)}，但账上还有现金。还能撑，只是每一季都更贵。`;
  return `利润和现金都已经变红。再推进，就是拿未来换时间。`;
 }
+function isAnnualMode(){return S.year>=8}
 function progressQuarter(){
  if(S.ended||document.getElementById('quarterTransition'))return;
+ if(isAnnualMode()){progressYear();return}
  const positive=S.profit>=0;
  const profitCopy=positive
    ? ['财务还算得过来…','客户回款中…','这一季至少还没白忙…','工资照发，项目照跑…']
@@ -963,6 +959,75 @@ function progressQuarter(){
  </div>`;
  document.body.appendChild(host);
  setTimeout(()=>{host.remove();resolveQuarter()},1500);
+}
+function progressYear(){
+ if(S.ended||document.getElementById('quarterTransition'))return;
+ const positive=S.profit>=0;
+ const host=document.createElement('div');
+ host.className=`overlay quarter-transition ${positive?'quarter-positive':'quarter-negative'}`;
+ host.id='quarterTransition';
+ host.innerHTML=`<div class="quarter-transition-card">
+   <div class="quarter-transition-kicker">YEAR ${S.year} →</div>
+   <div class="quarter-transition-copy">${pick([
+     '这一年的项目一起往前滚…','客户、工资和回款一起跑了一年…','公司又老了一岁…',
+     '一年过去，几个项目终于能一起算账了…','这一年没有四次暂停键了…'
+   ])}</div>
+   <div class="quarter-transition-sub">第8年起按年度经营结算</div>
+ </div>`;
+ document.body.appendChild(host);
+ setTimeout(()=>{host.remove();resolveYear()},1500);
+}
+function resolveYear(){
+ if(S.ended)return;
+ const manpowerBefore=totalFreeSlots();
+ let gross=0,margin=0;
+ for(const p of S.active){
+   const weeks=Math.min(48,p.left);
+   const share=weeks/p.weeks;
+   gross+=p.value*share;
+   margin+=p.value*p.margin*share;
+   p.left-=48;
+ }
+ const salary=payroll()*12;
+ const office=Math.max(4,S.team.length*.45)*12*projectPriceIndex();
+ const yearNet=margin-salary-office;
+ S.cash+=yearNet;
+ S.revenue+=gross;
+ S.profit+=yearNet;
+ S.taxable+=Math.max(0,yearNet);
+ S.yearSpend+=salary+office;
+
+ S.team.forEach(p=>{
+   normalizePerson(p);
+   p.slots=p.slots.map(w=>Math.max(0,w-48)).filter(w=>w>0);
+ });
+ const done=S.active.filter(p=>p.left<=0);
+ done.forEach(p=>{
+   if(p.quality>84){
+     S.reputation=clamp(S.reputation+2,0,100);
+     S.qualityMomentum=(S.qualityMomentum||0)+1;
+   }
+   maybeCreateRenewal(p);
+ });
+ S.qualityMomentum=Math.max(0,(S.qualityMomentum||0)-1);
+ S.active=S.active.filter(p=>p.left>0);
+
+ if(S.pendingHires.length){
+   const before=S.team.length;
+   for(const h of S.pendingHires){
+     S.team.push(h.person);
+     log(`${h.person.name} 到岗。招聘费已经提前付过。`,'good');
+   }
+   S.pendingHires=[];
+   showScaleUpgrade(before,S.team.length);
+ }
+ log(`第${S.year}年经营结算：确认毛利 ${fmt(margin)}，全年工资+办公 ${fmt(salary+office)}。`,yearNet>=0?'good':'bad');
+ const manpowerAfter=totalFreeSlots();
+ S.awaitingYearEnd=true;
+ render();
+ saveGame(false);
+ showManpowerDelta(manpowerBefore,manpowerAfter,'年度结束，人力释放 / 新人到岗');
+ yearEnd();
 }
 function resolveQuarter(){
  if(S.ended)return;
@@ -1092,7 +1157,7 @@ function showSevenYearCongrats(){
    <div class="survival-kicker">7 YEARS SURVIVED</div>
    <div class="big">恭喜。你已经把公司开过了第7年。</div>
    <p>按一项美国 Census 历史样本对单体广告公司的研究，平均存续时间大约就是 <b>7年</b>。</p>
-   <p class="muted">你现在已经不是“新公司”了。接下来拼的不是活下来，是这家公司最终会变成什么。</p>
+   <p class="muted">你现在已经不是“新公司”了。第8年开始，经营节奏会自动加速为一年一个回合。</p>
    <button class="btn" id="survivalContinue">知道了，继续开</button>
  </div>`;
  document.body.appendChild(host);
@@ -1141,9 +1206,10 @@ function showTwelveYearRetirement(){
 function advanceToNextYear(){
  if(S.year>=MAX_YEARS){endGame();return}
  S.yearStartProfit=S.profit;
+ const finishedYear=S.year;
  S.year++;
  S.quarter=1;
- S.week+=12;
+ S.week+=finishedYear>=8?48:12;
  genOpp();
  render();
  saveGame(false);
@@ -1423,7 +1489,7 @@ function render(){
  const avail=available().length;
  const freeSlotsNow=totalFreeSlots(),capacityNow=totalCapacity(),usedNow=usedCapacity();
  const scaleStep=businessScaleStep(),band=businessScaleBand(),nextBand=nextScaleAt();
- app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年 Q${S.quarter} · ${S.evergreen?`长青模式 / 最多${MAX_YEARS}年`:`标准模式 / ${STANDARD_YEARS}年退休`} · 每3年阶段结算</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
+ app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff} · 第${S.year}年${isAnnualMode()?' · 年度经营':` Q${S.quarter}`} · ${S.evergreen?`长青模式 / 最多${MAX_YEARS}年`:`标准模式 / ${STANDARD_YEARS}年退休`} · 每3年阶段结算</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招一个人</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
  <div class="core-stats">
    <div class="core-stat profit-core ${S.profit<0?'negative-profit':''}">
      <span>累计利润</span>
@@ -1438,12 +1504,12 @@ function render(){
    </div>
  </div>
  <div class="stats secondary-stats"><div class="stat"><b>${fmt(S.cash)}</b><span>公司现金</span></div><div class="stat"><b>${S.team.length}</b><span>正式员工</span></div><div class="stat scale-stat"><b>${band}人档 · +${scaleStep}档</b><span>业务案值等级</span><small>到 ${nextBand} 人再升 1 档 · 毛利率不自动提高</small></div><div class="stat"><b>${S.reputation}</b><span>行业声望</span></div><div class="stat"><b>${S.morale}</b><span>团队士气</span></div><div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格指数 ×${projectPriceIndex().toFixed(2)} · 每年案值约+3%</small></div></div>
- <div class="grid"><main class="panel"><h2>这季度，生意自己不会长出来</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
-   <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">推进一季度 →</button>
+ <div class="grid"><main class="panel"><h2>${isAnnualMode()?'这一年，生意自己不会长出来':'这季度，生意自己不会长出来'}</h2>${gossipHTML()}<div class="cards">${S.opp.map(o=>cardHTML(o)).join('')||'<p class="muted">机会用完了。推进一季度，市场再刷新。</p>'}</div><div class="quarter-action ${S.profit<0?'quarter-action-loss':'quarter-action-profit'}">
+   <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">${isAnnualMode()?'推进这一年 →':'推进一季度 →'}</button>
    <div class="quarter-action-copy">
      <div class="quarter-profit-line">当前累计利润 <b>${fmt(S.profit)}</b></div>
      <div class="quarter-status-copy">${quarterStatusCopy()}</div>
-     <small>季度工资约 ${fmt(payroll()*3)} · 当前名义大单上限 ${fmt(unlockCap())}</small>
+     <small>${isAnnualMode()?'年度':'季度'}工资约 ${fmt(payroll()*(isAnnualMode()?12:3))} · 当前名义大单上限 ${fmt(unlockCap())}</small>
    </div>
  </div>
  <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>工龄</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${Number.isFinite(p.tenure)?p.tenure:2}年</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
@@ -1460,8 +1526,8 @@ function durationLabel(weeks){
 function cardHTML(o){
  const lack=Math.max(0,o.people-available().length);
  const isPitch=o.type==='pitch';
- const seniorGate=seniorGateInfo(o.value);
- const seniorLocked=!seniorGate.ok;
+ const moraleGate=moraleGateInfo(o.value);
+ const moraleLocked=!moraleGate.ok;
  const staffingNote=lack?` · 缺 ${lack} 人`:'';
  const secondLine=isPitch
    ? `${o.inbound?'主动邀约 · 胜率额外 +12% · ':o.renewal?'千万级续约也需重新比稿 · ':''}比稿期 ${o.pitchWeeks}周 · 基础赢率约 ${35+DIFF[S.diff].baseWin}%${staffingNote}`
@@ -1475,10 +1541,10 @@ function cardHTML(o){
  const manpowerPreview=isPitch
    ? `赢稿执行将占用约 ${internalUse} 人力槽`
    : `接下后约剩 ${remaining} 人力槽`;
- const seniorLine=seniorGate.required
-   ? `<div class="senior-requirement ${seniorLocked?'senior-short':'senior-ok'}">资深门槛 ${Math.round(seniorGate.required*100)}% · 当前 ${Math.round(seniorGate.current*100)}%（${seniorGate.have}/${S.team.length}）</div>`
+ const moraleLine=moraleGate.required
+   ? `<div class="senior-requirement ${moraleLocked?'senior-short':'senior-ok'}">士气门槛 ${moraleGate.required} · 当前 ${moraleGate.current}</div>`
    : '';
- return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${seniorLine}<div class="row" style="margin-top:10px"><button class="btn ${seniorLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${seniorLocked?'资深比例不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${seniorLocked?'disabled':''}>${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
+ return `<div class="card ${o.inbound?'inbound-card':''}"><div class="card-topline"><span class="tag">${o.inbound?'客户主动找上门':o.renewal?(o.type==='pitch'?'续约Pitch':'续约'):o.type==='small'?'散活':o.type==='retainer'?'年框':'Pitch'}</span><span class="people-need ${lack?'people-short':''}">需 ${o.people} 人力${lack?` · 缺 ${lack}`:''}</span></div><h4>${o.name}</h4><div class="money">${fmt(o.value)}</div><div class="meta">毛利 ${(o.margin*100).toFixed(0)}% · ${durationLine}<br>${secondLine}${feeLine}</div><div class="manpower-preview">${manpowerPreview}</div>${moraleLine}<div class="row" style="margin-top:10px"><button class="btn ${moraleLocked?'senior-locked-btn':''}" onclick="requestProject('${o.id}')">${moraleLocked?'资深比例不足':isPitch?'去比稿':'接下来'}</button>${isPitch?`<button class="btn secondary" onclick="boost('${o.id}')" ${moraleLocked?'disabled':''}>${o.boost?'取消加码':'加码人力 · 胜率随机 +5~49%'}</button>`:''}</div></div>`
 }
 function activeHTML(){if(!S.active.length)return '<p class="muted">没有。全公司此刻理论上可以去喝咖啡。</p>';return `<table class="team"><thead><tr><th>项目</th><th>案值</th><th>剩余</th><th>质量</th></tr></thead><tbody>${S.active.map(p=>`<tr><td>${p.name}${p.legacy?' · 老客户':''}</td><td>${fmt(p.value)}</td><td>${Math.max(0,p.left)}周</td><td>${p.quality.toFixed(0)}</td></tr>`).join('')}</tbody></table>`}
 function startHTML(){
@@ -1487,6 +1553,6 @@ function startHTML(){
    <div><span>本机存档</span><b>第 ${save.year} 年 Q${save.quarter} · ${save.diff}</b><small>累计利润 ${fmt(Number(save.profit)||0)} · ${(save.team||[]).length} 人</small></div>
    <div class="row"><button class="btn" onclick="loadSavedGame()">继续经营 →</button><button class="btn secondary" onclick="deleteSaveFromStart()">删除存档</button></div>
  </div>`:'';
- return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>把一家广告公司开过12年。第3、6、9年阶段结算，第12年正式退休；退休后还可以选择进入长青模式。</p>${saveBlock}<div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">前三年仍约 5–8 分钟；标准模式共12年，可随时存档。第7年还有一个小纪念。存档保存在当前浏览器。</p></div></div>`;
+ return `<div class="start"><div class="startbox"><div class="creator-mark start-creator">@洪流的广告流言</div><h1>广告公司模拟器</h1><p>把一家广告公司开过12年。第3、6、9年阶段结算，第12年正式退休；退休后还可以选择进入长青模式。</p>${saveBlock}<div class="difficulty">${Object.entries(DIFF).map(([k,d])=>`<div class="diff" onclick="start('${k}')"><strong>${d.name} · ${d.label}</strong><small>${d.desc}</small></div>`).join('')}</div><p class="footer">前7年按季度经营；第8年起自动加速为一年一个经营回合。标准模式第12年退休，可随时存档。</p></div></div>`;
 }
 render();
