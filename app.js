@@ -267,6 +267,32 @@ function statusText(p){
  return `忙 ${longest}周`;
 }
 function payroll(){return S.team.reduce((a,p)=>a+p.salary,0)}
+function quarterOfficeCost(){
+ return Math.max(4,S.team.length*.45)*3*projectPriceIndex();
+}
+function quarterBreakEvenGrossProfit(){
+ return payroll()*3+quarterOfficeCost();
+}
+function quarterBookedNumbers(){
+ let revenue=0,grossProfit=0;
+ for(const p of S.active||[]){
+   const weeks=Math.min(12,Math.max(0,p.left||0));
+   const share=(p.weeks||1)?weeks/(p.weeks||1):0;
+   revenue+=(p.value||0)*share;
+   grossProfit+=(p.value||0)*(p.margin||0)*share;
+ }
+ const marginRate=revenue>0?grossProfit/revenue:0;
+ return {revenue,grossProfit,marginRate};
+}
+function quarterBreakEvenInfo(){
+ const fixed=quarterBreakEvenGrossProfit();
+ const booked=quarterBookedNumbers();
+ const fallbackMargin=.35;
+ const marginRate=booked.marginRate>0?booked.marginRate:fallbackMargin;
+ const revenueNeed=marginRate>0?fixed/marginRate:0;
+ const gap=booked.grossProfit-fixed;
+ return {fixed,bookedGross:booked.grossProfit,bookedRevenue:booked.revenue,marginRate,revenueNeed,gap};
+}
 function totalCapacity(){return S.team.reduce((a,p)=>a+capacity(p),0)}
 function usedCapacity(){return S.team.reduce((a,p)=>a+activeLoads(p).length,0)}
 function businessScaleStep(n=S.team.length){return Math.max(0,Math.floor((n-10)/5))}
@@ -1657,6 +1683,10 @@ function render(){
  const freeSlotsNow=totalFreeSlots(),capacityNow=totalCapacity(),usedNow=usedCapacity();
  const band=businessScaleBand();
  const profitRate=S.revenue?S.profit/S.revenue*100:0;
+ const breakEven=quarterBreakEvenInfo();
+ const breakEvenGapCopy=breakEven.gap>=0
+   ? `已过保本线 +${fmt(breakEven.gap)}`
+   : `距保本还差 ${fmt(Math.abs(breakEven.gap))}`;
  const emptyOpportunityCopy=isAnnualMode()?'机会用完了。推进这一年，市场再刷新。':'机会用完了。推进一季度，市场再刷新。';
  app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff}年代 · 第${S.year}年${isAnnualMode()?' · 年度经营':` Q${S.quarter}`} · ${S.evergreen?`长青模式 / 最多${MAX_YEARS}年`:`标准模式 / ${STANDARD_YEARS}年退休`}</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招聘</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
  <div class="core-stats">
@@ -1680,6 +1710,7 @@ function render(){
  </div>
  <div class="stats secondary-stats">
    <div class="stat"><b>${fmt(S.cash)}</b><span>现金</span></div>
+   <div class="stat"><b>${fmt(breakEven.fixed)}</b><span>季度保本线</span><small>需毛利 · 按在手毛利率约需收入 ${fmt(breakEven.revenueNeed)}</small></div>
    <div class="stat"><b>${S.team.length}人</b><span>团队</span><small>${band}人档</small></div>
    <div class="stat" title="士气影响Pitch发挥、项目质量、续约和离职，但不会限制接单。"><b>${S.morale}</b><span>士气</span></div>
    <div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格 ×${projectPriceIndex().toFixed(2)}</small></div>
@@ -1688,7 +1719,10 @@ function render(){
    <button class="btn quarter-btn ${S.profit<0?'quarter-btn-loss':'quarter-btn-profit'}" onclick="progressQuarter()">${isAnnualMode()?'推进这一年 →':'推进一季度 →'}</button>
    <div class="quarter-action-copy">
      <div class="quarter-status-copy">${quarterStatusCopy()}</div>
-     <small>${isAnnualMode()?'年度':'季度'}工资约 ${fmt(payroll()*(isAnnualMode()?12:3))} · 当前名义大单上限 ${fmt(unlockCap())}</small>
+     <small>${isAnnualMode()
+       ? `年度工资约 ${fmt(payroll()*12)} · 当前名义大单上限 ${fmt(unlockCap())}`
+       : `本季度在手可确认毛利 ${fmt(breakEven.bookedGross)} · ${breakEvenGapCopy} · 当前名义大单上限 ${fmt(unlockCap())}`
+     }</small>
    </div>
  </div>
  <h3>正在执行</h3>${activeHTML()}</main><aside><section class="panel"><h2>流水</h2><div class="log">${S.log.map(x=>`<div class="${x.cls}">${x.msg}</div>`).join('')}</div></section><section class="panel" style="margin-top:18px"><h2>团队</h2><table class="team"><thead><tr><th>人</th><th>职位</th><th>工龄</th><th>月薪</th><th>状态</th></tr></thead><tbody>${S.team.map(p=>`<tr><td>${p.name}</td><td>${p.role}</td><td>${Number.isFinite(p.tenure)?p.tenure:2}年</td><td>${fmt(p.salary)}</td><td><span class="pill">${statusText(p)}</span></td></tr>`).join('')}</tbody></table>${S.pendingHires.length?`<p class="muted">待到岗：${S.pendingHires.map(x=>x.person.name).join('、')}</p>`:''}</section></aside></div><div class="footer">规则核心：没有唯一正确路线。小公司、年框、Pitch、Free、大公司都能活，但都要付代价。</div></div>`
