@@ -291,7 +291,7 @@ function quarterBreakEvenInfo(){
  const marginRate=booked.marginRate>0?booked.marginRate:fallbackMargin;
  const revenueNeed=marginRate>0?fixed/marginRate:0;
  const gap=booked.grossProfit-fixed;
- return {fixed,bookedGross:booked.grossProfit,bookedRevenue:booked.revenue,marginRate,revenueNeed,gap};
+ return {fixed,bookedGross:booked.grossProfit,bookedRevenue:booked.revenue,marginRate,revenueNeed,gap,usingFallback:booked.marginRate<=0};
 }
 function totalCapacity(){return S.team.reduce((a,p)=>a+capacity(p),0)}
 function usedCapacity(){return S.team.reduce((a,p)=>a+activeLoads(p).length,0)}
@@ -1710,7 +1710,7 @@ function render(){
  </div>
  <div class="stats secondary-stats">
    <div class="stat"><b>${fmt(S.cash)}</b><span>现金</span></div>
-   <div class="stat"><b>${fmt(breakEven.fixed)}</b><span>季度保本线</span><small>需毛利 · 按在手毛利率约需收入 ${fmt(breakEven.revenueNeed)}</small></div>
+   <div class="stat break-even-stat"><b>${fmt(breakEven.fixed)}</b><span>季度保本线</span><small>需毛利 · ${breakEven.usingFallback?'按35%毛利率估算':'按在手平均毛利率'}，约需收入 ${fmt(breakEven.revenueNeed)}</small></div>
    <div class="stat"><b>${S.team.length}人</b><span>团队</span><small>${band}人档</small></div>
    <div class="stat" title="士气影响Pitch发挥、项目质量、续约和离职，但不会限制接单。"><b>${S.morale}</b><span>士气</span></div>
    <div class="stat economy-stat"><b>${economyPhase().label}</b><span>行业气候</span><small>价格 ×${projectPriceIndex().toFixed(2)}</small></div>
