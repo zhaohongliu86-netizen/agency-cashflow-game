@@ -1180,7 +1180,7 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
    : (grossCost>0?`本次额外投入 ${fmt(grossCost)}`:'全用内部员工 · 无额外比稿成本');
  const boostLine='';
  const capabilityLine=`${matchBonus?`资源加码 +${matchBonus}% · `:''}声望信任 ${reputationBonus>=0?'+':''}${reputationBonus}% · 团队 ${staffing>=0?'+':''}${staffing.toFixed(0)}%${moraleBonus?` · 士气 ${moraleBonus>=0?'+':''}${moraleBonus.toFixed(0)}%`:''}${freePenalty?` · Free ${freePenalty}%`:''}`;
- host.innerHTML=`<div class="pitch-result-card">
+ host.innerHTML=`<div class="event-art-slot pitch-art-slot" aria-hidden="true"></div><div class="pitch-result-card">
    <div class="pitch-result-kicker">${tier?tier.kicker:'PITCH RESULT'}</div>
    <div class="pitch-result-title">${tier?tier.title:(won?'赢稿！':'丢稿。')}</div>
    ${tier?`<div class="pitch-tier-note">${tier.note}${isRecord?' · 刷新公司最大单纪录。':''}</div>`:''}
@@ -1719,8 +1719,9 @@ function showYearModal(){
 }
 function showEnding(reason){
  const [title,desc]=endingText(reason),roi=S.revenue?S.profit/S.revenue*100:0;
- const host=document.createElement('div');host.className='overlay';
- host.innerHTML=`<div class="modal ending">
+ const host=document.createElement('div');
+ host.className=`overlay ending-overlay ${reason==='cashDeath'?'ending-death-overlay':'ending-standard-overlay'}`;
+ host.innerHTML=`<div class="event-art-slot ending-art-slot" aria-hidden="true"></div><div class="modal ending">
    <div class="big">${title}</div>
    <p>${desc}</p>
    <div class="ending-dual"><div><span>经营成绩</span><b>${fmt(S.profit)}</b><small>累计利润</small></div><div><span>行业位置</span><b>${S.reputation}分</b><small>${reputationLabel()} · ${S.diff}年代开局</small></div></div>
@@ -1757,7 +1758,7 @@ function render(){
    ? `已过保本线 +${fmt(breakEven.gap)}`
    : `距保本还差 ${fmt(Math.abs(breakEven.gap))}`;
  const emptyOpportunityCopy=isAnnualMode()?'机会用完了。推进这一年，市场再刷新。':'机会用完了。推进一季度，市场再刷新。';
- app.innerHTML=`<div class="shell"><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff}年代 · 第${S.year}年${isAnnualMode()?' · 年度经营':` Q${S.quarter}`} · ${S.evergreen?`长青模式 / 最多${MAX_YEARS}年`:`标准模式 / ${STANDARD_YEARS}年退休`}</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招聘</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
+ app.innerHTML=`<div class="shell era-${S.diff}"><div class="play-backdrop" aria-hidden="true"></div><div class="mast"><div class="brand"><h1>广告公司模拟器</h1><p>${S.diff}年代 · 第${S.year}年${isAnnualMode()?' · 年度经营':` Q${S.quarter}`} · ${S.evergreen?`长青模式 / 最多${MAX_YEARS}年`:`标准模式 / ${STANDARD_YEARS}年退休`}</p></div><div class="mast-actions"><div class="creator-mark">@洪流的广告流言</div><div class="row"><button class="btn secondary" onclick="manualSave()">存档</button><button class="btn secondary" onclick="hire()">招聘</button><button class="btn secondary" onclick="showLayoffModal()">裁员</button><button class="btn warn" onclick="bankrupt()">宣布破产</button></div></div></div>
  <div class="core-stats">
    <div class="core-stat profit-core ${S.profit<0?'negative-profit':''}">
      <span>累计利润</span>
