@@ -213,3 +213,99 @@ body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,
   .ending-overlay .ending{padding:28px 16px}
   .ending-overlay .big{font-size:clamp(62px,19vw,110px)}
 }
+
+
+/* ===== VISUAL SYSTEM V2.1 · events stay inside the game ===== */
+.pitch-result-overlay{
+  z-index:60;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  background:rgba(13,13,13,.48);
+  overflow:auto;
+}
+.pitch-result-overlay.pitch-win,
+.pitch-result-overlay.pitch-loss{background:rgba(13,13,13,.48)}
+.pitch-result-card{
+  position:relative;
+  width:min(820px,calc(100vw - 40px));
+  height:auto;
+  max-height:calc(100vh - 48px);
+  overflow:auto;
+  margin:0;
+  padding:34px 38px 30px;
+  border:3px solid #111!important;
+  box-shadow:12px 12px 0 rgba(0,0,0,.18)!important;
+  text-align:left;
+  display:block;
+  background:var(--event-purple);
+}
+.pitch-win .pitch-result-card{background:var(--event-blue)}
+.pitch-loss .pitch-result-card{background:var(--event-purple)}
+.pitch-big .pitch-result-card,
+.pitch-million .pitch-result-card,
+.pitch-legend .pitch-result-card{transform:none}
+.pitch-result-card .event-art-slot{
+  position:absolute;
+  inset:0;
+  z-index:0;
+  overflow:hidden;
+  opacity:1;
+}
+.pitch-result-card>*:not(.event-art-slot){position:relative;z-index:1}
+.pitch-result-card .event-art-slot:before{
+  right:-22px;
+  bottom:-30px;
+  font-size:clamp(140px,24vw,280px);
+  -webkit-text-stroke:3px rgba(0,0,0,.10);
+}
+.pitch-result-title,
+.pitch-million .pitch-result-title,
+.pitch-legend .pitch-result-title{
+  font-size:clamp(66px,9vw,112px);
+  line-height:.82;
+}
+.pitch-result-project{font-size:24px;margin-top:22px}
+.pitch-result-amount{font-size:42px}
+.pitch-result-comment{font-size:15px;max-width:610px}
+.pitch-result-meta{font-size:12px;max-width:650px}
+.pitch-result-button{font-size:14px}
+
+/* Quarter/year progress is a compact transition card, not a scene change. */
+.quarter-transition{
+  z-index:58;
+  display:grid;
+  place-items:center;
+  padding:20px;
+  background:rgba(13,13,13,.28);
+}
+.quarter-positive,.quarter-negative{background:rgba(13,13,13,.28)}
+.quarter-transition-card{
+  width:min(620px,calc(100vw - 40px));
+  padding:30px 32px;
+  background:var(--event-yellow);
+  border:3px solid #111;
+  box-shadow:10px 10px 0 rgba(0,0,0,.16);
+  text-align:left;
+}
+.quarter-negative .quarter-transition-card{background:var(--event-red)}
+.quarter-transition-copy{
+  font-size:clamp(38px,5.5vw,64px);
+  line-height:.92;
+  margin-top:14px;
+}
+.quarter-transition-sub{font-size:12px;margin-top:12px}
+
+/* Death/ending is intentionally the only event allowed to take over the screen. */
+.ending-death-overlay{display:grid;place-items:center}
+
+@media(max-width:900px){
+  .pitch-result-overlay,.quarter-transition{padding:14px}
+  .pitch-result-card{width:100%;padding:28px 22px}
+  .pitch-result-title,
+  .pitch-million .pitch-result-title,
+  .pitch-legend .pitch-result-title{font-size:clamp(58px,18vw,92px)}
+  .pitch-result-amount{font-size:34px}
+  .quarter-transition-card{width:100%;padding:24px 22px}
+  .quarter-transition-copy{font-size:clamp(38px,11vw,58px)}
+}
