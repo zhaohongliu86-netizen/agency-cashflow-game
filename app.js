@@ -1108,6 +1108,7 @@ function showPitchSuspense(o,onDone){
  host.className='overlay pitch-suspense-overlay';
  host.id='pitchSuspenseModal';
  host.innerHTML=`<div class="pitch-suspense-card">
+   <div class="event-art-slot pitch-suspense-art" aria-hidden="true"></div>
    <div class="pitch-suspense-kicker">PITCHING</div>
    <div class="pitch-suspense-project">${o.name}</div>
    <div class="pitch-suspense-copy" id="pitchSuspenseCopy">${first}</div>
@@ -1220,6 +1221,7 @@ function progressQuarter(){
  host.className=`overlay quarter-transition ${positive?'quarter-positive':'quarter-negative'}`;
  host.id='quarterTransition';
  host.innerHTML=`<div class="quarter-transition-card">
+   <div class="event-art-slot quarter-art-slot" aria-hidden="true"></div>
    <div class="quarter-transition-kicker">Q${S.quarter} →</div>
    <div class="quarter-transition-copy">${pick([...profitCopy,...neutral])}</div>
    <div class="quarter-transition-sub">正在结算这一季度</div>
@@ -1234,6 +1236,7 @@ function progressYear(){
  host.className=`overlay quarter-transition ${positive?'quarter-positive':'quarter-negative'}`;
  host.id='quarterTransition';
  host.innerHTML=`<div class="quarter-transition-card">
+   <div class="event-art-slot quarter-art-slot" aria-hidden="true"></div>
    <div class="quarter-transition-kicker">YEAR ${S.year} →</div>
    <div class="quarter-transition-copy">${pick([
      '这一年的项目一起往前滚…','客户、工资和回款一起跑了一年…','公司又老了一岁…',
