@@ -1201,6 +1201,7 @@ function maybeLeave(){
 }
 function boost(id){toggleResourceBoost(id)}
 function quarterStatusCopy(){
+ if(S.cashCrisisTurn)return '抢救期：下个经营回合结束前，现金必须回到正数。';
  if(S.profit>=300)return '账面很绿。现在最危险的是觉得自己不会犯错。';
  if(S.profit>=0)return '还在盈利。下一季度，继续决定钱该花在哪。';
  if(S.cash>0)return `已经累计亏损 ${fmt(S.profit)}，但账上还有现金。还能撑，只是每一季都更贵。`;
@@ -1210,7 +1211,7 @@ function isAnnualMode(){return S.year>=8&&S.quarter===1}
 function progressQuarter(){
  if(S.ended||document.getElementById('quarterTransition'))return;
  if(isAnnualMode()){progressYear();return}
- const positive=S.profit>=0;
+ const positive=!S.cashCrisisTurn&&S.profit>=0;
  const profitCopy=positive
    ? ['财务还算得过来…','客户回款中…','这一季至少还没白忙…','工资照发，项目照跑…']
    : ['财务表开始变红…','现金流正在冒烟…','工资日又快到了…','有人开始问：下季度会好吗？'];
@@ -1228,7 +1229,7 @@ function progressQuarter(){
 }
 function progressYear(){
  if(S.ended||document.getElementById('quarterTransition'))return;
- const positive=S.profit>=0;
+ const positive=!S.cashCrisisTurn&&S.profit>=0;
  const host=document.createElement('div');
  host.className=`overlay quarter-transition ${positive?'quarter-positive':'quarter-negative'}`;
  host.id='quarterTransition';
