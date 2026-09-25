@@ -1180,7 +1180,7 @@ function showProjectResult({won,type,name,value,cost,pWin,grossCost=0,pitchFee=0
    : (grossCost>0?`本次额外投入 ${fmt(grossCost)}`:'全用内部员工 · 无额外比稿成本');
  const boostLine='';
  const capabilityLine=`${matchBonus?`资源加码 +${matchBonus}% · `:''}声望信任 ${reputationBonus>=0?'+':''}${reputationBonus}% · 团队 ${staffing>=0?'+':''}${staffing.toFixed(0)}%${moraleBonus?` · 士气 ${moraleBonus>=0?'+':''}${moraleBonus.toFixed(0)}%`:''}${freePenalty?` · Free ${freePenalty}%`:''}`;
- host.innerHTML=`<div class="event-art-slot pitch-art-slot" aria-hidden="true"></div><div class="pitch-result-card">
+ host.innerHTML=`<div class="pitch-result-card"><div class="event-art-slot pitch-art-slot" aria-hidden="true"></div>
    <div class="pitch-result-kicker">${tier?tier.kicker:'PITCH RESULT'}</div>
    <div class="pitch-result-title">${tier?tier.title:(won?'赢稿！':'丢稿。')}</div>
    ${tier?`<div class="pitch-tier-note">${tier.note}${isRecord?' · 刷新公司最大单纪录。':''}</div>`:''}
