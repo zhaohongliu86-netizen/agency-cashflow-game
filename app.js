@@ -293,6 +293,68 @@ function quarterBreakEvenInfo(){
  const gap=booked.grossProfit-fixed;
  return {fixed,bookedGross:booked.grossProfit,bookedRevenue:booked.revenue,marginRate,revenueNeed,gap,usingFallback:booked.marginRate<=0};
 }
+function operatingTurnKey(){
+ return isAnnualMode()?`Y${S.year}-A`:`Y${S.year}-Q${S.quarter}`;
+}
+function cashDeathLine(){
+ return -2*quarterBreakEvenGrossProfit();
+}
+function endFromCash(reason='cashDeath'){
+ if(!S||S.ended)return true;
+ S.ended=true;
+ clearSave();
+ showEnding(reason);
+ return true;
+}
+function syncCashCrisis(){
+ if(!S||S.ended)return false;
+ const fatal=cashDeathLine();
+ if(S.cash<=fatal){
+   log(`现金跌到 ${fmt(S.cash)}，突破死亡线 ${fmt(fatal)}。公司撑不住了。`,'bad');
+   return endFromCash('cashDeath');
+ }
+ if(S.cash>=0){
+   if(S.cashCrisisTurn){
+     S.cashCrisisTurn=null;
+     log('现金重新转正。公司从抢救期里爬出来了。','good');
+     showSaveToast('活下来了',`现金回到 ${fmt(S.cash)}`);
+     saveGame(false);
+   }
+   return false;
+ }
+ if(!S.cashCrisisTurn){
+   S.cashCrisisTurn=operatingTurnKey();
+   log(`现金跌到 ${fmt(S.cash)}。公司进入抢救期：下一个经营回合结算后必须回到正数。`,'bad');
+   showSaveToast('进入抢救期',`现金 ${fmt(S.cash)} · 死亡线 ${fmt(fatal)}`,true);
+   saveGame(false);
+ }
+ return false;
+}
+function resolveCashSurvivalAfterSettlement(){
+ if(!S||S.ended)return false;
+ const turn=operatingTurnKey();
+ const existing=S.cashCrisisTurn;
+ if(S.cash<=cashDeathLine())return endFromCash('cashDeath');
+ if(S.cash>=0){
+   if(existing){
+     S.cashCrisisTurn=null;
+     log('这一回合把现金救回来了。公司继续营业。','good');
+     showSaveToast('抢救成功',`现金 ${fmt(S.cash)}`);
+   }
+   return false;
+ }
+ if(!existing){
+   S.cashCrisisTurn=turn;
+   log(`结算后现金 ${fmt(S.cash)}。公司进入抢救期：还有一个经营回合。`,'bad');
+   showSaveToast('进入抢救期',`下一经营回合必须转正 · 死亡线 ${fmt(cashDeathLine())}`,true);
+   return false;
+ }
+ if(existing!==turn){
+   log(`抢救期结束，现金仍为 ${fmt(S.cash)}。公司关门。`,'bad');
+   return endFromCash('cashDeath');
+ }
+ return false;
+}
 function totalCapacity(){return S.team.reduce((a,p)=>a+capacity(p),0)}
 function usedCapacity(){return S.team.reduce((a,p)=>a+activeLoads(p).length,0)}
 function businessScaleStep(n=S.team.length){return Math.max(0,Math.floor((n-10)/5))}
