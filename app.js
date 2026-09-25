@@ -1777,7 +1777,7 @@ function render(){
    </div>
  </div>
  <div class="stats secondary-stats">
-   <div class="stat"><b>${fmt(S.cash)}</b><span>现金</span></div>
+   <div class="stat cash-stat ${S.cash<0?'cash-crisis':''}"><b>${fmt(S.cash)}</b><span>现金</span><small>${S.cash<0?'抢救期 · 下个经营回合必须转正':`约可覆盖 ${breakEven.fixed>0?(S.cash/breakEven.fixed).toFixed(1):'∞'} 个季度固定成本`} · 死亡线 ${fmt(-2*breakEven.fixed)}</small></div>
    <div class="stat break-even-stat"><b>${fmt(breakEven.fixed)}</b><span>季度保本线</span><small>需毛利 · ${breakEven.usingFallback?'按35%毛利率估算':'按在手平均毛利率'}，约需收入 ${fmt(breakEven.revenueNeed)}</small></div>
    <div class="stat"><b>${S.team.length}人</b><span>团队</span><small>${band}人档</small></div>
    <div class="stat" title="士气影响Pitch发挥、项目质量、续约和离职，但不会限制接单。"><b>${S.morale}</b><span>士气</span></div>
