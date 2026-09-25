@@ -151,7 +151,7 @@ function readSavedGame(){
 }
 function normalizeLoadedGame(data){
  const defaults={
-   pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,gossip:[],log:[],opp:[],active:[],
+   pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,cashCrisisTurn:null,gossip:[],log:[],opp:[],active:[],
    route:{pitch:0,retainer:0,small:0,free:0},yearStartProfit:0,
    records:{maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0}
  };
@@ -160,6 +160,7 @@ function normalizeLoadedGame(data){
  loaded.records=Object.assign({maxDeal:0,maxQuarterProfit:null,maxWinStreak:0,maxTeam:0,projects:0,inboundOffers:0},loaded.records||{});
  if(!Number.isFinite(loaded.records.maxQuarterProfit))loaded.records.maxQuarterProfit=-Infinity;
  loaded.awaitingYearEnd=!!loaded.awaitingYearEnd;
+ loaded.cashCrisisTurn=typeof loaded.cashCrisisTurn==='string'?loaded.cashCrisisTurn:null;
  loaded.lastBudgetShrinkYear=Number(loaded.lastBudgetShrinkYear)||0;
  loaded.evergreen=!!loaded.evergreen||loaded.year>STANDARD_YEARS;
  loaded.sevenYearCelebrated=typeof data.sevenYearCelebrated==='boolean'?data.sevenYearCelebrated:loaded.year>7;
@@ -212,7 +213,7 @@ function showSaveToast(title,copy,bad=false){
 function start(diff){
  const rules=DIFF[diff]||DIFF[2026];
  const team=buildStandardStarterTeam();
- S={diff:String(rules.name),year:1,quarter:1,week:1,cash:rules.startCash,profit:0,revenue:0,taxable:0,reputation:45,morale:70,team,opp:[],active:openingProjectsForEra(rules.name),log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:team.length,projects:0,inboundOffers:0}};
+ S={diff:String(rules.name),year:1,quarter:1,week:1,cash:rules.startCash,profit:0,revenue:0,taxable:0,reputation:45,morale:70,team,opp:[],active:openingProjectsForEra(rules.name),log:[],gossip:[],wins:0,losses:0,winStreak:0,lossStreak:0,totalPitches:0,bonusMonths:1,party:0,followups:0,ended:false,pendingHires:[],pendingRenewals:[],awaitingYearEnd:false,lastBudgetShrinkYear:0,evergreen:false,sevenYearCelebrated:false,qualityMomentum:0,cashCrisisTurn:null,route:{pitch:0,retainer:0,small:0,free:0},yearSpend:0,yearStartProfit:0,records:{maxDeal:0,maxQuarterProfit:-Infinity,maxWinStreak:0,maxTeam:team.length,projects:0,inboundOffers:0}};
  allocateLegacy();
  genOpp();
  log(`从 ${rules.name} 年开局。利润和声望是两条独立的经营结果。`,'');
@@ -1261,6 +1262,7 @@ function resolveYear(){
  S.profit+=yearNet;
  S.taxable+=Math.max(0,yearNet);
  S.yearSpend+=salary+office;
+ if(resolveCashSurvivalAfterSettlement())return;
 
  S.team.forEach(p=>{
    normalizePerson(p);
@@ -1303,6 +1305,7 @@ function resolveQuarter(){
  const quarterNet=margin-salary-office;
  if(S.records)S.records.maxQuarterProfit=Math.max(S.records.maxQuarterProfit,quarterNet);
  S.cash += quarterNet; S.revenue+=gross; S.profit += quarterNet; S.taxable += Math.max(0,margin - salary - office); S.yearSpend+=salary+office;
+ if(resolveCashSurvivalAfterSettlement())return;
  S.team.forEach(p=>{
    normalizePerson(p);
    p.slots=p.slots.map(w=>Math.max(0,w-12)).filter(w=>w>0);
@@ -1516,6 +1519,7 @@ function closeYear(bonus,party){
  const preTaxYearProfit=S.profit-(Number.isFinite(S.yearStartProfit)?S.yearStartProfit:0);
  const tax=Math.max(0,preTaxYearProfit)*gameRules().tax;
  S.cash-=tax;S.profit-=tax;
+ if(syncCashCrisis())return;
  const feedback=yearEndFeedback(bonus,party);
  const salaryGrowth=salaryGrowthRate();
  log(`年末：奖金 ${bonus} 个月，年会 ${party===0?'不办':party===1?'标准':'体面'}，税前年度利润 ${fmt(preTaxYearProfit)}，纳税 ${fmt(tax)}。`,'muted');
@@ -1676,7 +1680,8 @@ function closeCompanyAtYearEnd(){S.ended=true;clearSave();showEnding('closed')}
 function bankrupt(){S.ended=true;clearSave();showEnding('bankrupt')}
 function endGame(){S.ended=true;clearSave();showEnding('complete')}
 function endingText(reason){
- if(reason==='bankrupt')return ['现金流艺术家','你把“无限负债也是一种路线”执行到了最后。银行没被说服。'];
+ if(reason==='cashDeath')return ['现金断了','抢救期结束，账上的钱还是没能回到正数。公司关门。'];
+ if(reason==='bankrupt')return ['现金流艺术家','你主动结束了公司。账本就停在这里。'];
  if(reason==='closed')return S.profit<0
    ? ['及时止损者','年关到了，你决定把门关上。至少亏损没有继续长大。']
    : ['见好就收','公司还能开，但你决定在这一年结束时收手。'];
@@ -1740,6 +1745,7 @@ function showEnding(reason){
 
 function render(){
  const app=document.getElementById('app');if(!S){app.innerHTML=startHTML();return}
+ if(syncCashCrisis())return;
  updateTeamRecord();
  const avail=available().length;
  const freeSlotsNow=totalFreeSlots(),capacityNow=totalCapacity(),usedNow=usedCapacity();
